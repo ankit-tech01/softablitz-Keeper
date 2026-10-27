@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AutomationRule;
+use Illuminate\Database\Eloquent\Collection;
 
 class RuleEvaluator
 {
@@ -11,7 +12,31 @@ class RuleEvaluator
      */
     public function firstMatch(string $path, int $size, int $modifiedAt, ?array $allowedRuleIds = null): ?AutomationRule
     {
-        foreach (AutomationRule::query()->where('is_enabled', true)->orderBy('priority')->orderBy('id')->get() as $rule) {
+        return $this->firstMatchFromRules(
+            AutomationRule::query()->where('is_enabled', true)->orderBy('priority')->orderBy('id')->get(),
+            $path,
+            $size,
+            $modifiedAt,
+            $allowedRuleIds,
+        );
+    }
+
+    /**
+     * @param  Collection<int, AutomationRule>  $rules
+     * @param  array<int, int>|null  $allowedRuleIds
+     */
+    public function firstMatchFromRules(
+        Collection $rules,
+        string $path,
+        int $size,
+        int $modifiedAt,
+        ?array $allowedRuleIds = null,
+    ): ?AutomationRule {
+        foreach ($rules as $rule) {
+            if (! $rule->is_enabled) {
+                continue;
+            }
+
             if ($allowedRuleIds !== null && ! in_array($rule->id, $allowedRuleIds, true)) {
                 continue;
             }

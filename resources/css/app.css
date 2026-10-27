@@ -482,6 +482,126 @@ p {
     overflow: hidden;
 }
 
+.inventory-panel {
+    margin-bottom: 20px;
+}
+
+.inventory-panel .panel-heading form {
+    margin: 0;
+}
+
+.inventory-panel .panel-heading button:disabled {
+    cursor: wait;
+    opacity: .7;
+}
+
+.inventory-status,
+.inventory-note {
+    padding: 10px 19px;
+    border-top: 1px solid #f0f1ee;
+    color: #647a61;
+    font-size: 13px;
+}
+
+.inventory-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.inventory-status a {
+    margin-left: auto;
+    color: #315d42;
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.inventory-status-error {
+    color: #99574b;
+}
+
+.inventory-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px 19px;
+}
+
+.inventory-stats article {
+    display: grid;
+    gap: 5px;
+    padding: 12px;
+    border: 1px solid #e9ede6;
+    border-radius: 9px;
+    background: #fcfdfb;
+}
+
+.inventory-stats article span {
+    color: #858b82;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .8px;
+}
+
+.inventory-stats article strong {
+    color: #294d3a;
+    font-size: 18px;
+}
+
+.inventory-types {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 19px 14px;
+}
+
+.inventory-types > strong {
+    margin-right: 4px;
+    font-size: 13px;
+}
+
+.inventory-types > span {
+    padding: 5px 8px;
+    border: 1px solid #e9ede6;
+    border-radius: 20px;
+    color: #697267;
+    font-size: 12px;
+}
+
+.inventory-types b {
+    margin-left: 4px;
+    color: #315d42;
+}
+
+.inventory-table-wrap {
+    overflow-x: auto;
+}
+
+.inventory-table-wrap table {
+    min-width: 760px;
+}
+
+.inventory-table-wrap td:nth-child(2) {
+    max-width: 360px;
+    overflow-wrap: anywhere;
+}
+
+.inventory-pagination {
+    padding: 12px 19px;
+}
+
+.inventory-pagination nav {
+    display: flex;
+    justify-content: space-between;
+}
+
+@media (max-width: 700px) {
+    .inventory-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 .panel-heading {
     display: flex;
     align-items: flex-start;

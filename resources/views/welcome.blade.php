@@ -27,6 +27,7 @@
                 <a class="{{ $tab === 'rules' ? 'active' : '' }}" href="{{ route('home', ['tab' => 'rules']) }}"><span>03</span> Rule studio</a>
                 <a class="{{ $tab === 'preview' ? 'active' : '' }}" href="{{ route('home', ['tab' => 'preview']) }}"><span>04</span> Dry-run preview</a>
                 <a class="{{ $tab === 'activity' ? 'active' : '' }}" href="{{ route('home', ['tab' => 'activity']) }}"><span>05</span> Activity & undo</a>
+                <a class="{{ $tab === 'inventory' ? 'active' : '' }}" href="{{ route('home', ['tab' => 'inventory']) }}"><span>06</span> File inventory</a>
             </nav>
 
             <div class="sidebar-bottom">
@@ -65,6 +66,63 @@
                     <article class="stat-card"><div class="stat-top"><span>ACTIVE RULES</span><span class="stat-icon lavender">⌘</span></div><div class="stat-value">{{ $stats['rules'] }}<small> rules</small></div><div class="stat-foot">First match wins, every time</div></article>
                     <article class="stat-card"><div class="stat-top"><span>FILES ORGANIZED</span><span class="stat-icon peach">↗</span></div><div class="stat-value">{{ number_format($stats['organized']) }}<small> files</small></div><div class="stat-foot">Recorded in your action ledger</div></article>
                     <article class="stat-card"><div class="stat-top"><span>IN THE QUEUE</span><span class="stat-icon blue">◷</span></div><div class="stat-value">{{ $stats['queued'] }}<small> waiting</small></div><div class="stat-foot">Settled files only</div></article>
+                </section>
+
+                <section class="panel inventory-panel" id="inventory">
+                    <div class="panel-heading">
+                        <div><div class="eyebrow">06 / DEVICE FILE INVENTORY</div><h2>Files across this device</h2><p>Review file locations, names, sizes, and timestamps, with totals by file type.</p></div>
+                        <form method="POST" action="{{ route('inventory.scan') }}">@csrf<button class="button button-dark" type="submit" {{ in_array($inventoryRun?->status, ['queued', 'scanning'], true) ? 'disabled' : '' }}>{{ in_array($inventoryRun?->status, ['queued', 'scanning'], true) ? 'Scanning…' : 'Scan device' }} <span>↻</span></button></form>
+                    </div>
+
+                    @if ($inventoryRun?->status === 'queued' || $inventoryRun?->status === 'scanning')
+                        <div class="inventory-status" role="status"><span class="status-dot"></span> Device scan {{ $inventoryRun->status }}@if ($inventoryRun->files_count > 0) · {{ number_format($inventoryRun->files_count) }} files found so far @endif. This can take a while for large drives. <a href="{{ route('home', ['tab' => 'inventory']) }}">Refresh status</a></div>
+                    @elseif ($inventoryRun?->status === 'failed')
+                        <div class="inventory-status inventory-status-error" role="alert">{{ $inventoryRun->error_message }} The last completed inventory remains available below.</div>
+                    @endif
+
+                    @if ($completedInventoryRun)
+                        <div class="inventory-stats">
+                            <article><span>FILES FOUND</span><strong>{{ number_format($completedInventoryRun->files_count) }}</strong></article>
+                            <article><span>PDF FILES</span><strong>{{ number_format($inventoryTypes->firstWhere('extension', 'pdf')?->files_count ?? 0) }}</strong></article>
+                            <article><span>TOTAL SIZE</span><strong>{{ number_format($completedInventoryRun->total_bytes / 1073741824, 2) }} GB</strong></article>
+                            <article><span>LAST SCANNED</span><strong>{{ $completedInventoryRun->completed_at?->diffForHumans() ?? '—' }}</strong></article>
+                        </div>
+
+                        <div class="inventory-types">
+                            <strong>File types</strong>
+                            @forelse ($inventoryTypes as $type)
+                                <span>{{ $type->extension !== '' ? '.'.$type->extension : 'No extension' }} <b>{{ number_format($type->files_count) }}</b></span>
+                            @empty
+                                <span>No files found</span>
+                            @endforelse
+                        </div>
+
+                        @if ($completedInventoryRun->inaccessible_directories > 0)
+                            <div class="inventory-note">{{ number_format($completedInventoryRun->inaccessible_directories) }} directories could not be read and were skipped.</div>
+                        @endif
+
+                        <div class="table-wrap inventory-table-wrap">
+                            <table>
+                                <thead><tr><th>FILE NAME</th><th>DIRECTORY</th><th>SIZE</th><th>CREATED</th><th>MODIFIED</th></tr></thead>
+                                <tbody>
+                                    @forelse ($inventoryFiles as $file)
+                                        <tr>
+                                            <td>{{ $file->name }}{{ $file->extension !== '' ? ' · '.strtoupper($file->extension) : '' }}</td>
+                                            <td class="mono">{{ dirname($file->path) }}</td>
+                                            <td>{{ number_format($file->size) }} B</td>
+                                            <td>{{ date('M j, Y H:i', $file->created_at_timestamp) }}</td>
+                                            <td>{{ date('M j, Y H:i', $file->modified_at_timestamp) }}</td>
+                                        </tr>
+                                    @empty
+                                        <tr><td colspan="5">No files were found in the accessible drives.</td></tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="inventory-pagination">{{ $inventoryFiles->links() }}</div>
+                    @else
+                        <div class="empty-state"><div class="empty-mark">⌕</div><strong>No device inventory yet</strong><p>Start a scan to count all accessible files across mounted drives and see their details here.</p></div>
+                    @endif
                 </section>
 
                 <section class="content-grid">

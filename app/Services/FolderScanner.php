@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\FileObservation;
 use App\Models\WatchedFolder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -64,7 +65,35 @@ class FolderScanner
                     'modified_at' => $modifiedAt,
                     'last_seen_at' => Carbon::now(),
                 ]);
-                $observation->save();
+
+                try {
+                    $observation->save();
+                } catch (UniqueConstraintViolationException $exception) {
+                    if ($observation->exists) {
+                        throw $exception;
+                    }
+
+                    $observation = FileObservation::query()
+                        ->where('watched_folder_id', $folder->id)
+                        ->where('path_hash', $pathHash)
+                        ->first();
+
+                    if ($observation === null) {
+                        throw $exception;
+                    }
+
+                    $observation->stable_scans = $observation->file_size === $size
+                        && $observation->modified_at === $modifiedAt
+                        ? min($observation->stable_scans + 1, 255)
+                        : 1;
+                    $observation->fill([
+                        'file_path' => $path,
+                        'file_size' => $size,
+                        'modified_at' => $modifiedAt,
+                        'last_seen_at' => Carbon::now(),
+                    ]);
+                    $observation->save();
+                }
 
                 if ($observation->stable_scans >= 2) {
                     $stableFiles[] = [

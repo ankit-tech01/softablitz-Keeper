@@ -2,10 +2,17 @@
 
 use App\Models\AutomationRule;
 use App\Models\FileExecution;
+use App\Models\FileObservation;
+use App\Models\InventoryFile;
+use App\Models\InventoryScan;
 use App\Models\LedgerEntry;
 use App\Models\WatchedFolder;
+use App\Services\DeviceInventoryScanner;
+use App\Services\FolderScanner;
 use App\Services\RuleEvaluator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 
 test('a settled file is previewed, renamed once, and restored from the ledger', function () {
@@ -67,6 +74,63 @@ test('the watched-folder validator rejects the filesystem root', function () {
     expect(WatchedFolder::query()->count())->toBe(0);
 });
 
+test('a concurrent observation insert is reconciled without failing the folder scan', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-scan-race-'.Str::uuid();
+    File::makeDirectory($folderPath);
+    $filePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
+    File::put($filePath, 'stable report');
+    $realPath = realpath($filePath);
+
+    if ($realPath === false) {
+        throw new RuntimeException('The test file path could not be resolved.');
+    }
+
+    $normalizedPath = str_replace('\\', '/', $realPath);
+
+    if (DIRECTORY_SEPARATOR === '\\') {
+        $normalizedPath = strtolower($normalizedPath);
+    }
+
+    $pathHash = hash('sha256', $normalizedPath);
+    $folder = WatchedFolder::query()->create([
+        'name' => 'Race test',
+        'path' => $folderPath,
+        'path_hash' => hash('sha256', $folderPath),
+        'is_active' => true,
+    ]);
+    $insertCompetingObservation = true;
+
+    FileObservation::saving(function (FileObservation $observation) use (&$insertCompetingObservation, $filePath, $realPath, $pathHash, $folder): void {
+        if (! $insertCompetingObservation) {
+            return;
+        }
+
+        $insertCompetingObservation = false;
+        DB::table('file_observations')->insert([
+            'watched_folder_id' => $folder->id,
+            'path_hash' => $pathHash,
+            'file_path' => $realPath,
+            'file_size' => filesize($filePath),
+            'modified_at' => filemtime($filePath),
+            'stable_scans' => 1,
+            'last_seen_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    try {
+        $stableFiles = app(FolderScanner::class)->scan($folder);
+
+        expect($stableFiles)->toHaveCount(1);
+        expect(FileObservation::query()->where('watched_folder_id', $folder->id)->count())->toBe(1);
+        expect(FileObservation::query()->where('watched_folder_id', $folder->id)->firstOrFail()->stable_scans)->toBe(2);
+    } finally {
+        FileObservation::flushEventListeners();
+        File::deleteDirectory($folderPath);
+    }
+});
+
 test('a rule can be deleted without removing its history and queued actions are cancelled', function () {
     $rule = AutomationRule::query()->create([
         'name' => 'Delete me',
@@ -116,6 +180,45 @@ test('a rule can be deleted without removing its history and queued actions are 
     expect($anotherRule->fresh()->is_approved)->toBeFalse();
 });
 
+test('a device inventory scan records recursive file details and file type totals', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-'.Str::uuid();
+    File::makeDirectory($folderPath.DIRECTORY_SEPARATOR.'nested', 0755, true);
+
+    try {
+        File::put($folderPath.DIRECTORY_SEPARATOR.'report.pdf', 'pdf content');
+        File::put($folderPath.DIRECTORY_SEPARATOR.'nested'.DIRECTORY_SEPARATOR.'notes.txt', 'text content');
+        $scan = InventoryScan::query()->create(['roots' => [$folderPath], 'status' => 'queued']);
+
+        app(DeviceInventoryScanner::class)->scan($scan, [$folderPath]);
+
+        expect($scan->fresh()->status)->toBe('completed');
+        expect($scan->fresh()->files_count)->toBe(2);
+        expect($scan->fresh()->total_bytes)->toBe(strlen('pdf content') + strlen('text content'));
+        expect($scan->files()->where('extension', 'pdf')->firstOrFail()->name)->toBe('report.pdf');
+        expect($scan->files()->where('name', 'notes.txt')->firstOrFail()->path)
+            ->toBe(realpath($folderPath.DIRECTORY_SEPARATOR.'nested'.DIRECTORY_SEPARATOR.'notes.txt'));
+        expect(InventoryFile::query()->count())->toBe(2);
+        $this->get(route('home', ['tab' => 'inventory']))
+            ->assertOk()
+            ->assertSee('Files across this device')
+            ->assertSee('report.pdf')
+            ->assertSee('notes.txt');
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('the inventory section can queue an on-demand device scan', function () {
+    Queue::fake();
+
+    $this->post(route('inventory.scan'))
+        ->assertRedirect(route('home', ['tab' => 'inventory']))
+        ->assertSessionHas('success');
+
+    expect(InventoryScan::query()->firstOrFail()->status)->toBe('queued');
+    Queue::assertPushed(\App\Jobs\ScanDeviceInventory::class);
+});
+
 test('the first matching enabled rule wins', function () {
     $firstRule = AutomationRule::query()->create([
         'name' => 'First rule',
@@ -138,6 +241,33 @@ test('the first matching enabled rule wins', function () {
     $matchedRule = app(RuleEvaluator::class)->firstMatch('C:\\Users\\test\\report.pdf', 100, time());
 
     expect($matchedRule?->is($firstRule))->toBeTrue();
+});
+
+test('preview skips checksum hashing for files that match no enabled rule', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-unmatched-'.Str::uuid();
+    File::makeDirectory($folderPath);
+
+    try {
+        File::put($folderPath.DIRECTORY_SEPARATOR.'installer.exe', 'unmatched file');
+        $this->post(route('folders.store'), ['folder_path' => $folderPath])->assertRedirect();
+        $this->post(route('rules.store'), [
+            'name' => 'Separate PDF files',
+            'logic' => 'and',
+            'conditions' => [['field' => 'extension', 'operator' => 'equals', 'value' => 'pdf']],
+            'action' => 'trash',
+        ])->assertRedirect();
+
+        $folder = WatchedFolder::query()->firstOrFail();
+        $this->post(route('folders.preview', $folder))->assertRedirect();
+        $this->post(route('folders.preview', $folder))->assertRedirect();
+
+        $plan = session('keeper.preview.plans.0');
+        expect($plan['rule_id'])->toBeNull();
+        expect($plan['checksum'])->toBeNull();
+        expect($plan['rule_name'])->toBeNull();
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
 });
 
 test('nested AND OR and NOT groups are evaluated recursively', function () {

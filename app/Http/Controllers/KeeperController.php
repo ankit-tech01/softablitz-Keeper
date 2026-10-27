@@ -3,10 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ExecuteFileAction;
+use App\Jobs\ScanDeviceInventory;
 use App\Models\AutomationRule;
 use App\Models\FileExecution;
+use App\Models\InventoryFile;
+use App\Models\InventoryScan;
 use App\Models\LedgerEntry;
 use App\Models\WatchedFolder;
+use App\Services\DeviceInventoryScanner;
 use App\Services\DesktopNotifier;
 use App\Services\FileActionService;
 use App\Services\FileDispatcher;
@@ -29,10 +33,26 @@ class KeeperController extends Controller
     {
         $folders = WatchedFolder::query()->withCount('observations')->orderBy('created_at')->get();
         $rules = AutomationRule::query()->orderBy('priority')->orderBy('id')->get();
+        $inventoryRun = InventoryScan::query()->latest('id')->first();
+        $completedInventoryRun = InventoryScan::query()->where('status', 'completed')->latest('id')->first();
+        $inventoryFiles = $completedInventoryRun === null
+            ? InventoryFile::query()->whereRaw('1 = 0')->paginate(25)
+            : $completedInventoryRun->files()->orderBy('path')->paginate(25)->withQueryString();
+        $inventoryTypes = $completedInventoryRun === null
+            ? collect()
+            : $completedInventoryRun->files()
+                ->selectRaw('extension, COUNT(*) as files_count')
+                ->groupBy('extension')
+                ->orderByDesc('files_count')
+                ->get();
 
         return view('welcome', [
             'folders' => $folders,
             'rules' => $rules,
+            'inventoryRun' => $inventoryRun,
+            'completedInventoryRun' => $completedInventoryRun,
+            'inventoryFiles' => $inventoryFiles,
+            'inventoryTypes' => $inventoryTypes,
             'entries' => LedgerEntry::query()->latest()->limit(12)->get(),
             'executions' => FileExecution::query()->latest()->limit(8)->get(),
             'preview' => session('keeper.preview', []),
@@ -43,6 +63,30 @@ class KeeperController extends Controller
                 'queued' => FileExecution::query()->whereIn('status', ['queued', 'processing'])->count(),
             ],
         ]);
+    }
+
+    public function scanDeviceInventory(DeviceInventoryScanner $scanner): RedirectResponse
+    {
+        if (InventoryScan::query()->whereIn('status', ['queued', 'scanning'])->exists()) {
+            return to_route('home', ['tab' => 'inventory'])->with('info', 'A device inventory scan is already in progress.');
+        }
+
+        $roots = $scanner->roots();
+
+        if ($roots === []) {
+            return to_route('home', ['tab' => 'inventory'])->withErrors([
+                'inventory' => 'No mounted drives were found to scan.',
+            ]);
+        }
+
+        $scan = InventoryScan::query()->create([
+            'roots' => $roots,
+            'status' => 'queued',
+        ]);
+
+        ScanDeviceInventory::dispatch($scan->id);
+
+        return to_route('home', ['tab' => 'inventory'])->with('success', 'Device inventory scan started. You can refresh this section to see its progress.');
     }
 
     public function storeFolder(Request $request, FolderPathService $paths): RedirectResponse
@@ -258,9 +302,35 @@ class KeeperController extends Controller
         }
 
         $stableFiles = $scanner->scan($folder);
+        $enabledRules = AutomationRule::query()
+            ->where('is_enabled', true)
+            ->orderBy('priority')
+            ->orderBy('id')
+            ->get();
         $plans = [];
 
         foreach ($stableFiles as $file) {
+            $rule = $evaluator->firstMatchFromRules(
+                $enabledRules,
+                $file['path'],
+                $file['size'],
+                $file['modified_at'],
+            );
+
+            if ($rule === null) {
+                $plans[] = [
+                    ...$file,
+                    'checksum' => null,
+                    'rule_id' => null,
+                    'rule_name' => null,
+                    'action' => null,
+                    'destination' => null,
+                    'loop_guard' => false,
+                ];
+
+                continue;
+            }
+
             $checksum = hash_file('sha256', $file['path']);
 
             if ($checksum === false) {
@@ -272,14 +342,13 @@ class KeeperController extends Controller
                 ->where('destination_path', $file['path'])
                 ->where('result_checksum', $checksum)
                 ->exists();
-            $rule = $alreadyOrganized ? null : $evaluator->firstMatch($file['path'], $file['size'], $file['modified_at']);
             $plans[] = [
                 ...$file,
                 'checksum' => $checksum,
-                'rule_id' => $rule?->id,
-                'rule_name' => $alreadyOrganized ? 'Already handled' : $rule?->name,
-                'action' => $alreadyOrganized ? 'ignored' : $rule?->action,
-                'destination' => $rule === null ? null : $actions->previewDestination($rule, $file['path']),
+                'rule_id' => $alreadyOrganized ? null : $rule->id,
+                'rule_name' => $alreadyOrganized ? 'Already handled' : $rule->name,
+                'action' => $alreadyOrganized ? 'ignored' : $rule->action,
+                'destination' => $alreadyOrganized ? null : $actions->previewDestination($rule, $file['path']),
                 'loop_guard' => $alreadyOrganized,
             ];
         }

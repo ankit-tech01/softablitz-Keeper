@@ -9,6 +9,7 @@ Route::middleware(EnsureLocalRequest::class)->group(function (): void {
     Route::post('/folders', [KeeperController::class, 'storeFolder'])->name('folders.store');
     Route::delete('/folders/{folder}', [KeeperController::class, 'destroyFolder'])->name('folders.destroy');
     Route::post('/folders/{folder}/preview', [KeeperController::class, 'previewFolder'])->name('folders.preview');
+    Route::post('/inventory/scan', [KeeperController::class, 'scanDeviceInventory'])->name('inventory.scan');
     Route::post('/preview/run', [KeeperController::class, 'runPreview'])->name('preview.run');
     Route::post('/rules', [KeeperController::class, 'storeRule'])->name('rules.store');
     Route::delete('/rules/{rule}', [KeeperController::class, 'destroyRule'])->name('rules.destroy');
