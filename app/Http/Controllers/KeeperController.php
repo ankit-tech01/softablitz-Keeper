@@ -124,6 +124,27 @@ class KeeperController extends Controller
         return to_route('home', ['tab' => 'rules'])->with('success', 'Rule saved. Rules run from top to bottom; only the first matching rule acts.');
     }
 
+    public function destroyRule(AutomationRule $rule): RedirectResponse
+    {
+        DB::transaction(function () use ($rule): void {
+            FileExecution::query()
+                ->where('automation_rule_id', $rule->id)
+                ->where('status', 'queued')
+                ->update([
+                    'status' => 'ignored',
+                    'last_error' => 'The automation rule was removed.',
+                    'processed_at' => now(),
+                ]);
+
+            $rule->delete();
+            AutomationRule::query()->update(['is_approved' => false]);
+        });
+
+        session()->forget('keeper.preview');
+
+        return to_route('home', ['tab' => 'rules'])->with('success', 'Rule deleted. Existing activity history was kept.');
+    }
+
     /**
      * @param  array<int, mixed>  $conditions
      * @return array<int, array<string, mixed>>

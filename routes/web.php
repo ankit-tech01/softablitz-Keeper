@@ -11,6 +11,7 @@ Route::middleware(EnsureLocalRequest::class)->group(function (): void {
     Route::post('/folders/{folder}/preview', [KeeperController::class, 'previewFolder'])->name('folders.preview');
     Route::post('/preview/run', [KeeperController::class, 'runPreview'])->name('preview.run');
     Route::post('/rules', [KeeperController::class, 'storeRule'])->name('rules.store');
+    Route::delete('/rules/{rule}', [KeeperController::class, 'destroyRule'])->name('rules.destroy');
     Route::patch('/rules/{rule}/toggle', [KeeperController::class, 'toggleRule'])->name('rules.toggle');
     Route::patch('/rules/{rule}/move', [KeeperController::class, 'moveRule'])->name('rules.move');
     Route::post('/activity/{entry}/undo', [KeeperController::class, 'undoEntry'])->name('activity.undo');

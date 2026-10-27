@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\AutomationRule;
+use App\Models\FileExecution;
 use App\Models\LedgerEntry;
 use App\Models\WatchedFolder;
 use App\Services\RuleEvaluator;
@@ -64,6 +65,55 @@ test('the watched-folder validator rejects the filesystem root', function () {
         ->assertSessionHasErrors('folder_path');
 
     expect(WatchedFolder::query()->count())->toBe(0);
+});
+
+test('a rule can be deleted without removing its history and queued actions are cancelled', function () {
+    $rule = AutomationRule::query()->create([
+        'name' => 'Delete me',
+        'conditions' => [['field' => 'extension', 'operator' => 'equals', 'value' => 'pdf']],
+        'logic' => 'and',
+        'action' => 'trash',
+        'priority' => 0,
+        'is_enabled' => true,
+        'is_approved' => true,
+    ]);
+    $anotherRule = AutomationRule::query()->create([
+        'name' => 'Keep me',
+        'conditions' => [['field' => 'name', 'operator' => 'contains', 'value' => 'report']],
+        'logic' => 'and',
+        'action' => 'trash',
+        'priority' => 1,
+        'is_enabled' => true,
+        'is_approved' => true,
+    ]);
+    $execution = FileExecution::query()->create([
+        'unique_key' => Str::uuid()->toString(),
+        'automation_rule_id' => $rule->id,
+        'file_path' => 'C:\\Users\\test\\report.pdf',
+        'modified_at' => time(),
+        'checksum' => str_repeat('a', 64),
+        'status' => 'queued',
+    ]);
+    $entry = LedgerEntry::query()->create([
+        'entry_uuid' => Str::uuid()->toString(),
+        'automation_rule_id' => $rule->id,
+        'action' => 'trash',
+        'source_path' => 'C:\\Users\\test\\old-report.pdf',
+        'checksum' => str_repeat('b', 64),
+        'status' => 'completed',
+    ]);
+
+    $this->withSession(['keeper.preview' => ['folder_id' => 1, 'plans' => []]])
+        ->delete(route('rules.destroy', $rule))
+        ->assertRedirect(route('home', ['tab' => 'rules']))
+        ->assertSessionMissing('keeper.preview');
+
+    expect(AutomationRule::query()->find($rule->id))->toBeNull();
+    expect($execution->fresh()->status)->toBe('ignored');
+    expect($execution->fresh()->automation_rule_id)->toBeNull();
+    expect($entry->fresh())->not->toBeNull();
+    expect($entry->fresh()->automation_rule_id)->toBeNull();
+    expect($anotherRule->fresh()->is_approved)->toBeFalse();
 });
 
 test('the first matching enabled rule wins', function () {

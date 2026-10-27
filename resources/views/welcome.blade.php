@@ -122,6 +122,7 @@
                                         <form method="POST" action="{{ route('rules.move', $rule) }}">@csrf @method('PATCH')<input type="hidden" name="direction" value="up"><button class="icon-button" type="submit" aria-label="Move rule up" {{ $loop->first ? 'disabled' : '' }}>↑</button></form>
                                         <form method="POST" action="{{ route('rules.move', $rule) }}">@csrf @method('PATCH')<input type="hidden" name="direction" value="down"><button class="icon-button" type="submit" aria-label="Move rule down" {{ $loop->last ? 'disabled' : '' }}>↓</button></form>
                                         <form method="POST" action="{{ route('rules.toggle', $rule) }}">@csrf @method('PATCH')<button class="toggle {{ $rule->is_enabled ? 'toggle-on' : '' }}" type="submit" aria-label="{{ $rule->is_enabled ? 'Disable' : 'Enable' }} rule"><i></i></button></form>
+                                        <form method="POST" action="{{ route('rules.destroy', $rule) }}" onsubmit="return confirm('Delete this rule? Existing activity history will be kept, but queued actions for this rule will be cancelled.')">@csrf @method('DELETE')<button class="icon-button rule-delete" type="submit" aria-label="Delete rule: {{ $rule->name }}" title="Delete rule">×</button></form>
                                     </div>
                                 </article>
                             @empty
