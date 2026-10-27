@@ -24,6 +24,24 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+<<<<<<< HEAD
+=======
+
+        $this->app->booted(function (): void {
+            if (! config('nativephp-internal.running')) {
+                return;
+            }
+
+            $databaseConnection = config('database.default', env('DB_CONNECTION', 'sqlite'));
+
+            config([
+                'database.default' => $databaseConnection,
+                'queue.connections.database.connection' => $databaseConnection,
+                'queue.failed.database' => $databaseConnection,
+                'queue.batching.database' => $databaseConnection,
+            ]);
+        });
+>>>>>>> 53c9f2d (New updates)
     }
 
     /**
