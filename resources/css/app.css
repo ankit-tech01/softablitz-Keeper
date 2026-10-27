@@ -4,7 +4,7 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
 @theme {
-    --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: 'Nunito', ui-sans-serif, system-ui, sans-serif;
 }
 
 .panel-heading-actions {
@@ -14,7 +14,7 @@
 }
 
 :root {
-    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    font-family: 'Nunito', ui-sans-serif, system-ui, sans-serif;
     color: #22251f;
     background: #f6f7f4;
     font-synthesis: none;
