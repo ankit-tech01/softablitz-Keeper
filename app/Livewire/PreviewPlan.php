@@ -123,7 +123,9 @@ class PreviewPlan extends Component
     public function render(): View
     {
         $preview = session('keeper.preview', []);
-        $plans = collect($preview['plans'] ?? []);
+        $preview = is_array($preview) ? $preview : [];
+        $rawPlans = $preview['plans'] ?? [];
+        $plans = collect(is_array($rawPlans) ? $rawPlans : []);
 
         return view('livewire.preview-plan', [
             'preview' => $preview,

@@ -196,7 +196,7 @@ class InventoryDashboard extends Component
         }
 
         $scans = InventoryScan::query()->get()->filter(
-            fn (InventoryScan $scan): bool => in_array($directory, $scan->roots ?? [], true),
+            fn (InventoryScan $scan): bool => in_array($directory, $this->scanRoots($scan), true),
         );
 
         if ($scans->isEmpty()) {
@@ -231,12 +231,12 @@ class InventoryDashboard extends Component
         $isScanning = $activeScan !== null;
         $selectedScan = $this->selectedDirectory === ''
             ? null
-            : $scans->first(fn (InventoryScan $scan): bool => in_array($this->selectedDirectory, $scan->roots ?? [], true));
+            : $scans->first(fn (InventoryScan $scan): bool => in_array($this->selectedDirectory, $this->scanRoots($scan), true));
         $latestScan = $activeScan ?? $selectedScan ?? $latestScan;
         $completedScan = $this->selectedDirectory === ''
             ? $scans->first(fn (InventoryScan $scan): bool => $scan->status === 'completed')
             : $scans->first(fn (InventoryScan $scan): bool => $scan->status === 'completed'
-                && in_array($this->selectedDirectory, $scan->roots ?? [], true));
+                && in_array($this->selectedDirectory, $this->scanRoots($scan), true));
         $displayScan = $isScanning ? $activeScan : $completedScan;
         $inventoryFiles = $displayScan?->files()->orderBy('path')->paginate(25);
         $inventoryTypes = $displayScan?->files()
@@ -245,8 +245,7 @@ class InventoryDashboard extends Component
             ->orderByDesc('files_count')
             ->get() ?? collect();
         $scannedDirectories = $scans
-            ->flatMap(fn (InventoryScan $scan): array => $scan->roots ?? [])
-            ->filter(fn (mixed $path): bool => is_string($path))
+            ->flatMap(fn (InventoryScan $scan): array => $this->scanRoots($scan))
             ->unique()
             ->values();
         $watchedDirectories = WatchedFolder::query()->orderBy('name')->pluck('path');
@@ -261,5 +260,19 @@ class InventoryDashboard extends Component
             'directories' => $directories,
             'hasSelectedScan' => $scannedDirectories->contains($this->selectedDirectory),
         ]);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function scanRoots(InventoryScan $scan): array
+    {
+        $roots = $scan->getAttribute('roots');
+
+        if (! is_array($roots)) {
+            return [];
+        }
+
+        return array_values(array_filter($roots, fn (mixed $root): bool => is_string($root)));
     }
 }

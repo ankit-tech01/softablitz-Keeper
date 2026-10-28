@@ -32,7 +32,7 @@ class AppServiceProvider extends ServiceProvider
                 return;
             }
 
-            $databaseConnection = config('database.default', env('DB_CONNECTION', 'sqlite'));
+            $databaseConnection = config('database.default', 'sqlite');
 
             config([
                 'database.default' => $databaseConnection,

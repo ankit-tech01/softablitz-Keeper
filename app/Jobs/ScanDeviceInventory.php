@@ -36,9 +36,13 @@ class ScanDeviceInventory implements ShouldQueue
         }
 
         try {
-            $roots = $scan->roots ?? [];
+            $roots = $scan->getAttribute('roots');
 
-            if (! is_array($roots) || count($roots) !== 1 || ! is_string($roots[0]) || ! is_dir($roots[0])) {
+            if (! is_array($roots)
+                || ! array_is_list($roots)
+                || count($roots) !== 1
+                || ! is_string($roots[0])
+                || ! is_dir($roots[0])) {
                 throw new \RuntimeException('The selected directory is unavailable.');
             }
 

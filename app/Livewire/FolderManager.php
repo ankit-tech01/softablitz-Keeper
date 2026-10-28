@@ -37,7 +37,7 @@ class FolderManager extends Component
 
     public function mount(): void
     {
-        $this->nextAutoPreviewAt = now()->addSeconds(30)->timestamp;
+        $this->nextAutoPreviewAt = (int) now()->addSeconds(30)->timestamp;
     }
 
     public function browseFolder(FolderPathService $paths): void
@@ -205,7 +205,7 @@ class FolderManager extends Component
 
         session()->put('keeper.auto_preview.observation_hashes', $nextSnapshots);
         $this->newFilesByFolder = $newFilesByFolder;
-        $this->nextAutoPreviewAt = now()->addSeconds(30)->timestamp;
+        $this->nextAutoPreviewAt = (int) now()->addSeconds(30)->timestamp;
         session()->put('keeper.preview', [
             'folder_id' => null,
             'sweep_id' => (string) Str::uuid(),

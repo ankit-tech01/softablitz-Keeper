@@ -153,11 +153,15 @@ document.addEventListener('change', (event) => {
     operatorSelect.name = fieldSelect.name.replace('[field]', '[operator]');
     bindLiveModel(operatorSelect, fieldSelect.getAttribute('wire:model.live').replace('.field', '.operator'));
     valueInput.placeholder = getConditionPlaceholder(fieldSelect.value);
+    valueInput.type = ['size', 'age'].includes(fieldSelect.value) ? 'number' : 'text';
     valueInput.value = valueInput.value || '';
     operatorSelect.dispatchEvent(new Event('change', { bubbles: true }));
 });
 
 updateConditionIndexes();
+document.querySelectorAll('[data-condition-field]').forEach((fieldSelect) => {
+    fieldSelect.dispatchEvent(new Event('change', { bubbles: true }));
+});
 
 function updateAutoPreviewCountdowns() {
     document.querySelectorAll('[data-auto-preview-countdown]').forEach((element) => {

@@ -112,7 +112,7 @@ class DeviceInventoryScanner
         $createdAt = $file->getCTime();
         $modifiedAt = $file->getMTime();
 
-        if ($path === false || $size === false || $createdAt === false || $modifiedAt === false) {
+        if ($path === false || $size === false) {
             return null;
         }
 
