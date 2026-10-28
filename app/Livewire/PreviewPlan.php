@@ -1,0 +1,102 @@
+<?php
+
+namespace App\Livewire;
+
+use App\Models\WatchedFolder;
+use App\Services\DesktopNotifier;
+use App\Services\FileDispatcher;
+use App\Services\RuleEvaluator;
+use Illuminate\Contracts\View\View;
+use Livewire\Attributes\On;
+use Livewire\Component;
+
+class PreviewPlan extends Component
+{
+    public string $confirmation = '1';
+
+    public ?string $message = null;
+
+    #[On('keeper-preview-updated')]
+    public function refreshPlan(): void {}
+
+    public function confirmPlan(
+        RuleEvaluator $evaluator,
+        FileDispatcher $dispatcher,
+        DesktopNotifier $notifier,
+    ): void {
+        $this->validate(['confirmation' => ['accepted']]);
+        $preview = session('keeper.preview', []);
+        $folderId = $preview['folder_id'] ?? null;
+        $sweepId = $preview['sweep_id'] ?? null;
+        $plans = $preview['plans'] ?? [];
+
+        if ((! is_int($folderId) && ! (is_string($folderId) && ctype_digit($folderId)))
+            || ! is_string($sweepId)
+            || ! is_array($plans)) {
+            $this->addError('confirmation', 'The preview session is invalid. Run a fresh scan before confirming.');
+
+            return;
+        }
+
+        $folder = WatchedFolder::query()->whereKey($folderId)->first();
+
+        if ($folder === null || ! $folder->is_active) {
+            $this->addError('confirmation', 'The watched folder is no longer available.');
+
+            return;
+        }
+
+        $queued = 0;
+
+        foreach ($plans as $plan) {
+            if (! is_array($plan)
+                || ! is_string($plan['path'] ?? null)
+                || ! is_int($plan['modified_at'] ?? null)
+                || ! is_string($plan['checksum'] ?? null)
+                || ! is_int($plan['rule_id'] ?? null)) {
+                continue;
+            }
+
+            $path = $plan['path'];
+            $currentModifiedAt = is_file($path) ? filemtime($path) : false;
+            $currentSize = is_file($path) ? filesize($path) : false;
+            $currentChecksum = is_file($path) ? hash_file('sha256', $path) : false;
+
+            if ($currentModifiedAt !== $plan['modified_at']
+                || $currentSize === false
+                || $currentChecksum === false
+                || $currentChecksum !== $plan['checksum']) {
+                continue;
+            }
+
+            $firstMatch = $evaluator->firstMatch($path, $currentSize, $currentModifiedAt);
+
+            if ($firstMatch === null || $firstMatch->id !== $plan['rule_id']) {
+                continue;
+            }
+
+            if (! $firstMatch->is_approved) {
+                $firstMatch->update(['is_approved' => true]);
+            }
+
+            if ($dispatcher->dispatch($folder, $path, $plan['modified_at'], $plan['checksum'], $firstMatch, $sweepId)) {
+                $queued++;
+            }
+        }
+
+        session()->forget('keeper.preview');
+        $notifier->queuedActions($queued);
+        $this->message = $queued > 0
+            ? "{$queued} file action(s) queued. The local worker will process them automatically."
+            : 'No files were queued because their preview changed or they were already processed.';
+        $this->dispatch('keeper-preview-updated');
+        $this->dispatch('keeper-activity-updated');
+    }
+
+    public function render(): View
+    {
+        return view('livewire.preview-plan', [
+            'preview' => session('keeper.preview', []),
+        ]);
+    }
+}

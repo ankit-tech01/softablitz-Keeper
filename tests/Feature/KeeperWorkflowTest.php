@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\ExecuteFileAction;
 use App\Models\AutomationRule;
 use App\Models\FileExecution;
 use App\Models\FileObservation;
@@ -8,20 +9,22 @@ use App\Models\InventoryScan;
 use App\Models\LedgerEntry;
 use App\Models\WatchedFolder;
 use App\Services\DeviceInventoryScanner;
+use App\Services\FileDispatcher;
 use App\Services\FolderScanner;
 use App\Services\RuleEvaluator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Livewire\Livewire;
 
 test('a settled file is previewed, renamed once, and restored from the ledger', function () {
-    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-'.Str::uuid();
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-' . Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        $sourcePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
-        $destinationPath = $folderPath.DIRECTORY_SEPARATOR.'report-archived.pdf';
+        $sourcePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
+        $destinationPath = $folderPath . DIRECTORY_SEPARATOR . 'report-archived.pdf';
         File::put($sourcePath, 'a private test document');
 
         $this->post(route('folders.store'), ['folder_path' => $folderPath])->assertRedirect();
@@ -75,10 +78,70 @@ test('the watched-folder validator rejects the filesystem root', function () {
     expect(WatchedFolder::query()->count())->toBe(0);
 });
 
-test('a concurrent observation insert is reconciled without failing the folder scan', function () {
-    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-scan-race-'.Str::uuid();
+test('the Livewire folder form adds a watched folder without a redirect', function () {
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-livewire-folder-' . Str::uuid();
     File::makeDirectory($folderPath);
-    $filePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
+
+    try {
+        Livewire::test(\App\Livewire\FolderManager::class)
+            ->set('folderPath', $folderPath)
+            ->call('addFolder')
+            ->assertHasNoErrors()
+            ->assertSee('Folder added');
+
+        expect(WatchedFolder::query()->where('path', realpath($folderPath))->exists())->toBeTrue();
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('the Livewire folder form validates its path as the user types', function () {
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-livewire-validation-' . Str::uuid();
+    File::makeDirectory($folderPath);
+
+    try {
+        Livewire::test(\App\Livewire\FolderManager::class)
+            ->set('folderPath', $folderPath . '-missing')
+            ->assertHasErrors(['folderPath'])
+            ->set('folderPath', $folderPath)
+            ->assertHasNoErrors(['folderPath']);
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('the Livewire rule form validates and creates a rule', function () {
+    Livewire::test(\App\Livewire\RuleManager::class)
+        ->set('name', 'Archive invoices')
+        ->set('conditions', [['field' => 'name', 'operator' => 'contains', 'value' => 'invoice']])
+        ->set('action', 'trash')
+        ->call('saveRule')
+        ->assertHasNoErrors()
+        ->assertSee('Rule saved');
+
+    expect(AutomationRule::query()->firstOrFail())
+        ->name->toBe('Archive invoices')
+        ->action->toBe('trash');
+});
+
+test('the Livewire rule form validates fields as the user types', function () {
+    Livewire::test(\App\Livewire\RuleManager::class)
+        ->set('name', 'A')
+        ->set('name', '')
+        ->assertHasErrors(['name'])
+        ->set('name', 'Archive invoices')
+        ->assertHasNoErrors(['name'])
+        ->set('conditions', [['field' => 'name', 'operator' => 'contains', 'value' => 'invoice']])
+        ->set('conditions', [['field' => 'name', 'operator' => 'contains', 'value' => '']])
+        ->assertHasErrors(['conditions'])
+        ->set('conditions', [['field' => 'name', 'operator' => 'contains', 'value' => 'invoice']])
+        ->assertHasNoErrors(['conditions']);
+});
+
+test('a concurrent observation insert is reconciled without failing the folder scan', function () {
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-scan-race-' . Str::uuid();
+    File::makeDirectory($folderPath);
+    $filePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
     File::put($filePath, 'stable report');
     $realPath = realpath($filePath);
 
@@ -181,13 +244,13 @@ test('a rule can be deleted without removing its history and queued actions are 
     expect($anotherRule->fresh()->is_approved)->toBeFalse();
 });
 
-test('a device inventory scan records recursive file details and file type totals', function () {
-    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-'.Str::uuid();
-    File::makeDirectory($folderPath.DIRECTORY_SEPARATOR.'nested', 0755, true);
+test('a directory inventory scan records recursive file details and file type totals', function () {
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-' . Str::uuid();
+    File::makeDirectory($folderPath . DIRECTORY_SEPARATOR . 'nested', 0755, true);
 
     try {
-        File::put($folderPath.DIRECTORY_SEPARATOR.'report.pdf', 'pdf content');
-        File::put($folderPath.DIRECTORY_SEPARATOR.'nested'.DIRECTORY_SEPARATOR.'notes.txt', 'text content');
+        File::put($folderPath . DIRECTORY_SEPARATOR . 'report.pdf', 'pdf content');
+        File::put($folderPath . DIRECTORY_SEPARATOR . 'nested' . DIRECTORY_SEPARATOR . 'notes.txt', 'text content');
         $scan = InventoryScan::query()->create(['roots' => [$folderPath], 'status' => 'queued']);
 
         app(DeviceInventoryScanner::class)->scan($scan, [$folderPath]);
@@ -197,7 +260,7 @@ test('a device inventory scan records recursive file details and file type total
         expect($scan->fresh()->total_bytes)->toBe(strlen('pdf content') + strlen('text content'));
         expect($scan->files()->where('extension', 'pdf')->firstOrFail()->name)->toBe('report.pdf');
         expect($scan->files()->where('name', 'notes.txt')->firstOrFail()->path)
-            ->toBe(realpath($folderPath.DIRECTORY_SEPARATOR.'nested'.DIRECTORY_SEPARATOR.'notes.txt'));
+            ->toBe(realpath($folderPath . DIRECTORY_SEPARATOR . 'nested' . DIRECTORY_SEPARATOR . 'notes.txt'));
         expect(InventoryFile::query()->count())->toBe(2);
         $this->get(route('home', ['tab' => 'inventory']))
             ->assertOk()
@@ -209,9 +272,55 @@ test('a device inventory scan records recursive file details and file type total
     }
 });
 
+test('file actions are dispatched to the default queue used by the local worker', function () {
+    Queue::fake();
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-dispatch-' . Str::uuid();
+    File::makeDirectory($folderPath);
+
+    try {
+        $path = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
+        File::put($path, 'queued report');
+        $folder = WatchedFolder::query()->create([
+            'name' => 'Dispatch test',
+            'path' => $folderPath,
+            'path_hash' => hash('sha256', $folderPath),
+            'is_active' => true,
+        ]);
+        $rule = AutomationRule::query()->create([
+            'name' => 'Archive report',
+            'conditions' => [['field' => 'extension', 'operator' => 'equals', 'value' => 'pdf']],
+            'logic' => 'and',
+            'action' => 'rename',
+            'target' => 'archived.pdf',
+            'priority' => 0,
+            'is_enabled' => true,
+            'is_approved' => true,
+        ]);
+        $modifiedAt = filemtime($path);
+        $checksum = hash_file('sha256', $path);
+
+        if ($modifiedAt === false || $checksum === false) {
+            throw new RuntimeException('The test file could not be inspected.');
+        }
+
+        app(FileDispatcher::class)->dispatch(
+            $folder,
+            $path,
+            $modifiedAt,
+            $checksum,
+            $rule,
+            Str::uuid()->toString(),
+        );
+
+        Queue::assertPushed(ExecuteFileAction::class, fn(ExecuteFileAction $job): bool => $job->queue === null);
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
 test('the inventory section can queue an on-demand directory scan', function () {
     Queue::fake();
-    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-queue-'.Str::uuid();
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-queue-' . Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
@@ -254,11 +363,12 @@ test('the first matching enabled rule wins', function () {
 });
 
 test('preview skips checksum hashing for files that match no enabled rule', function () {
-    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-unmatched-'.Str::uuid();
+    /** @var \Tests\TestCase $this */
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-unmatched-' . Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        File::put($folderPath.DIRECTORY_SEPARATOR.'installer.exe', 'unmatched file');
+        File::put($folderPath . DIRECTORY_SEPARATOR . 'installer.exe', 'unmatched file');
         $this->post(route('folders.store'), ['folder_path' => $folderPath])->assertRedirect();
         $this->post(route('rules.store'), [
             'name' => 'Separate PDF files',
@@ -313,12 +423,13 @@ test('nested AND OR and NOT groups are evaluated recursively', function () {
 });
 
 test('a changed file is not moved by a stale preview even when its timestamp is unchanged', function () {
-    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-'.Str::uuid();
+    /** @var \Tests\TestCase $this */
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-' . Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        $sourcePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
-        $destinationPath = $folderPath.DIRECTORY_SEPARATOR.'report-archived.pdf';
+        $sourcePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
+        $destinationPath = $folderPath . DIRECTORY_SEPARATOR . 'report-archived.pdf';
         File::put($sourcePath, 'first');
 
         $this->post(route('folders.store'), ['folder_path' => $folderPath]);

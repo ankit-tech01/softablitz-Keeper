@@ -24,11 +24,26 @@ class InventoryDashboard extends Component
     {
         if ($path !== '') {
             $this->directoryPath = $path;
+            $this->validateDirectoryPath();
         }
+    }
+
+    public function updatedDirectoryPath(string $path): void
+    {
+        $this->validateDirectoryPath();
+    }
+
+    private function validateDirectoryPath(): void
+    {
+        $validated = $this->validateOnly('directoryPath', [
+            'directoryPath' => ['required', 'string', 'max:4096'],
+        ]);
+        app(FolderPathService::class)->resolveWatchedFolder($validated['directoryPath'], 'directoryPath');
     }
 
     public function startScan(FolderPathService $paths): void
     {
+        $this->resetErrorBag('directoryPath');
         $validated = $this->validate([
             'directoryPath' => ['required', 'string', 'max:4096'],
         ]);

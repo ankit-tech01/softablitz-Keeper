@@ -16,14 +16,14 @@
                     <option value="{{ $directory->path }}">{{ $directory->path }}</option>
                 @endforeach
             </select>
-            <input id="inventory-directory" wire:model="directoryPath" type="text" maxlength="4096" placeholder="C:\Users\you\Downloads" required>
+            <input id="inventory-directory" wire:model.live.debounce.500ms="directoryPath" type="text" maxlength="4096" placeholder="C:\Users\you\Downloads" required @error('directoryPath') aria-invalid="true" aria-describedby="inventory-directory-error" @enderror>
             <button class="button button-dark" type="submit" wire:loading.attr="disabled" @disabled($isScanning)>
                 <span wire:loading.remove wire:target="startScan">Scan directory</span>
                 <span wire:loading wire:target="startScan">Starting…</span>
                 <span>↻</span>
             </button>
         </div>
-        @error('directoryPath')<small class="inventory-form-error">{{ $message }}</small>@enderror
+        @error('directoryPath')<small id="inventory-directory-error" class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
         <small>Choose a watched directory or enter any existing local folder path. Symbolic links are skipped.</small>
     </form>
 
@@ -36,6 +36,7 @@
             <span class="status-dot"></span>
             Directory scan {{ $latestScan->status }} · {{ number_format($latestScan->files_count) }} files found so far
             · {{ number_format($latestScan->total_bytes / 1073741824, 2) }} GB processed.
+            {{ $latestScan->roots[0] ?? '' }}.
             This may take a while for large directories.
         </div>
     @elseif ($latestScan?->status === 'failed')

@@ -1,12 +1,15 @@
-const conditionRoot = document.querySelector('#conditions');
-const conditionTemplate = document.querySelector('#condition-row-template');
-const groupTemplate = document.querySelector('#condition-group-template');
-
 function conditionNodes(container) {
     return Array.from(container.children).filter((child) => child.matches('[data-condition-node]'));
 }
 
-function updateConditionIndexes(container = conditionRoot, prefix = 'conditions') {
+function bindLiveModel(element, property, debounce = false) {
+    Array.from(element.attributes)
+        .filter((attribute) => attribute.name.startsWith('wire:model'))
+        .forEach((attribute) => element.removeAttribute(attribute.name));
+    element.setAttribute(debounce ? 'wire:model.live.debounce.500ms' : 'wire:model.live', property);
+}
+
+function updateConditionIndexes(container = document.querySelector('#conditions'), prefix = 'conditions') {
     if (!container) {
         return;
     }
@@ -27,15 +30,24 @@ function updateConditionIndexes(container = conditionRoot, prefix = 'conditions'
             const children = node.querySelector('[data-condition-container]');
 
             typeInput.name = `${base}[type]`;
+            bindLiveModel(typeInput, `${base.replaceAll('[', '.').replaceAll(']', '')}.type`);
             groupOperator.name = `${base}[operator]`;
+            bindLiveModel(groupOperator, `${base.replaceAll('[', '.').replaceAll(']', '')}.operator`);
             updateConditionIndexes(children, `${base}[conditions]`);
 
             return;
         }
 
-        node.querySelector('[data-condition-field]').name = `${base}[field]`;
-        node.querySelector('[data-condition-operator]').name = `${base}[operator]`;
-        node.querySelector('[data-condition-value]').name = `${base}[value]`;
+        const modelBase = base.replaceAll('[', '.').replaceAll(']', '');
+        const field = node.querySelector('[data-condition-field]');
+        const operator = node.querySelector('[data-condition-operator]');
+        const value = node.querySelector('[data-condition-value]');
+        field.name = `${base}[field]`;
+        bindLiveModel(field, `${modelBase}.field`);
+        operator.name = `${base}[operator]`;
+        bindLiveModel(operator, `${modelBase}.operator`);
+        value.name = `${base}[value]`;
+        bindLiveModel(value, `${modelBase}.value`, true);
     });
 }
 
@@ -44,7 +56,7 @@ function appendCondition(container) {
         return;
     }
 
-    const row = conditionTemplate.content.firstElementChild.cloneNode(true);
+    const row = document.querySelector('#condition-row-template').content.firstElementChild.cloneNode(true);
     container.append(row);
     updateConditionIndexes();
 }
@@ -66,7 +78,7 @@ function appendGroup(container) {
         return;
     }
 
-    const group = groupTemplate.content.firstElementChild.cloneNode(true);
+    const group = document.querySelector('#condition-group-template').content.firstElementChild.cloneNode(true);
     group.querySelector('[data-group-type]').name = '';
     group.querySelector('[data-group-operator]').name = '';
     group.querySelector('[data-group-type]').value = 'group';
@@ -75,7 +87,11 @@ function appendGroup(container) {
     updateConditionIndexes();
 }
 
-conditionRoot?.addEventListener('click', (event) => {
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('#rule-builder-form')) {
+        return;
+    }
+
     const addConditionButton = event.target.closest('[data-add-condition]');
     const addGroupButton = event.target.closest('[data-add-group]');
     const removeButton = event.target.closest('[data-remove-condition]');
@@ -90,7 +106,11 @@ conditionRoot?.addEventListener('click', (event) => {
     }
 });
 
-conditionRoot?.addEventListener('change', (event) => {
+document.addEventListener('change', (event) => {
+    if (!event.target.closest('#rule-builder-form')) {
+        return;
+    }
+
     const fieldSelect = event.target.closest('[data-condition-field]');
 
     if (!fieldSelect) {
@@ -109,20 +129,18 @@ conditionRoot?.addEventListener('change', (event) => {
 
         return option;
     }));
+    operatorSelect.value = operators[0][0];
     operatorSelect.name = fieldSelect.name.replace('[field]', '[operator]');
+    bindLiveModel(operatorSelect, fieldSelect.getAttribute('wire:model.live').replace('.field', '.operator'));
+    operatorSelect.dispatchEvent(new Event('change', { bubbles: true }));
 });
 
-const actionSelect = document.querySelector('[data-rule-action]');
-const targetInput = document.querySelector('[data-rule-target]');
-const targetLabel = document.querySelector('[data-target-label]');
-const targetHelp = document.querySelector('[data-target-help]');
-const scriptWarning = document.querySelector('[data-script-warning]');
-
-function updateActionFields() {
-    if (!actionSelect || !targetInput || !targetLabel || !targetHelp || !scriptWarning) {
-        return;
-    }
-
+function updateActionFields(actionSelect) {
+    const form = actionSelect.closest('#rule-builder-form');
+    const targetInput = form.querySelector('[data-rule-target]');
+    const targetLabel = form.querySelector('[data-target-label]');
+    const targetHelp = form.querySelector('[data-target-help]');
+    const scriptWarning = form.querySelector('[data-script-warning]');
     const action = actionSelect.value;
     const labels = {
         rename: ['NEW FILE NAME', 'Use a name only; the file stays in its current folder.'],
@@ -141,6 +159,13 @@ function updateActionFields() {
     scriptWarning.hidden = action !== 'script';
 }
 
-actionSelect?.addEventListener('change', updateActionFields);
-updateActionFields();
+document.addEventListener('change', (event) => {
+    const actionSelect = event.target.closest('[data-rule-action]');
+
+    if (actionSelect) {
+        updateActionFields(actionSelect);
+    }
+});
+
+document.querySelectorAll('[data-rule-action]').forEach(updateActionFields);
 updateConditionIndexes();
