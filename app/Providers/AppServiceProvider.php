@@ -10,6 +10,8 @@ use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
+    private const SQLITE_BUSY_TIMEOUT = 30000;
+
     /**
      * Register any application services.
      */
@@ -38,6 +40,11 @@ class AppServiceProvider extends ServiceProvider
                 'queue.failed.database' => $databaseConnection,
                 'queue.batching.database' => $databaseConnection,
             ]);
+
+            if ($databaseConnection === 'nativephp') {
+                config(['database.connections.nativephp.busy_timeout' => self::SQLITE_BUSY_TIMEOUT]);
+                DB::connection('nativephp')->statement('PRAGMA busy_timeout = '.self::SQLITE_BUSY_TIMEOUT);
+            }
         });
     }
 

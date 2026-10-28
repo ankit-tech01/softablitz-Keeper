@@ -6,14 +6,14 @@
     @if ($message)<div class="inventory-status" role="status">{{ $message }}</div>@endif
     @if (!empty($preview['automatic']))
         <div class="inventory-status" role="status">
-            Automatic preview found {{ count($preview['plans'] ?? []) }} settled file(s) across {{ $preview['folder_count'] ?? 0 }} watched folder(s). File names are hidden; no files change until you confirm.
+            Automatic preview found {{ count($preview['plans'] ?? []) }} settled file(s) across {{ $preview['folder_count'] ?? 0 }} watched folder(s). Matching files and proposed actions are listed below; unmatched file names remain hidden. No files change until you confirm.
         </div>
     @endif
     @if (!empty($preview['plans']))
-        @if (empty($preview['automatic']))
+        @if ($displayPlans->isNotEmpty())
         <div class="table-scroll">
             <table><thead><tr><th>FILE</th><th>FIRST MATCH</th><th>ACTION</th><th>DESTINATION</th></tr></thead><tbody>
-                @foreach ($preview['plans'] as $plan)
+                @foreach ($displayPlans as $plan)
                     <tr wire:key="preview-plan-{{ sha1($plan['path']) }}">
                         <td><strong>{{ basename($plan['path']) }}</strong><small class="table-sub mono">{{ $plan['path'] }}</small></td>
                         <td>{{ $plan['rule_name'] ?? 'No matching rule' }}</td>

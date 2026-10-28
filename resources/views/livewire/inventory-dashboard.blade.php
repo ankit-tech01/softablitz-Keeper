@@ -73,7 +73,7 @@
         <div class="inventory-status" role="status">
             <span class="status-dot"></span>
             Directory scan {{ $latestScan->status }} · {{ number_format($latestScan->files_count) }} files found so far
-            · {{ number_format($latestScan->total_bytes / 1073741824, 2) }} GB processed.
+            · {{ number_format($latestScan->total_bytes) }} B processed.
             {{ $latestScan->roots[0] ?? '' }}.
             This may take a while for large directories.
         </div>
@@ -87,7 +87,7 @@
         <div class="inventory-stats">
             <article><span>FILES FOUND</span><strong>{{ number_format($displayScan->files_count) }}</strong></article>
             <article><span>PDF FILES</span><strong>{{ number_format($inventoryTypes->firstWhere('extension', 'pdf')?->files_count ?? 0) }}</strong></article>
-            <article><span>TOTAL SIZE</span><strong>{{ number_format($displayScan->total_bytes / 1073741824, 2) }} GB</strong></article>
+            <article><span>TOTAL SIZE</span><strong>{{ number_format($displayScan->total_bytes) }} B</strong></article>
             <article><span>{{ $isScanning ? 'SCAN STARTED' : 'LAST SCANNED' }}</span><strong>{{ ($isScanning ? $displayScan->started_at : $displayScan->completed_at)?->diffForHumans() ?? '—' }}</strong></article>
         </div>
 

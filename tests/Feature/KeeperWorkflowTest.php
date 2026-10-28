@@ -5,6 +5,7 @@ use App\Jobs\ScanDeviceInventory;
 use App\Livewire\ActivityManager;
 use App\Livewire\FolderManager;
 use App\Livewire\InventoryDashboard;
+use App\Livewire\PreviewPlan;
 use App\Livewire\ResetWorkspace;
 use App\Livewire\RuleManager;
 use App\Livewire\WorkspaceStats;
@@ -156,6 +157,36 @@ test('the Livewire rule form validates and creates a rule', function () {
         ->action->toBe('trash');
 });
 
+test('toggling a rule disables its approval until it is previewed again', function () {
+    $rule = AutomationRule::query()->create([
+        'name' => 'Archive invoices',
+        'conditions' => [['field' => 'name', 'operator' => 'contains', 'value' => 'invoice']],
+        'logic' => 'and',
+        'action' => 'trash',
+        'priority' => 0,
+        'is_enabled' => true,
+        'is_approved' => true,
+    ]);
+    $otherRule = AutomationRule::query()->create([
+        'name' => 'Archive receipts',
+        'conditions' => [['field' => 'name', 'operator' => 'contains', 'value' => 'receipt']],
+        'logic' => 'and',
+        'action' => 'trash',
+        'priority' => 1,
+        'is_enabled' => true,
+        'is_approved' => true,
+    ]);
+
+    Livewire::test(RuleManager::class)
+        ->call('toggleRule', $rule->id)
+        ->assertSee('Rule status updated.');
+
+    expect($rule->fresh())
+        ->is_enabled->toBeFalse()
+        ->is_approved->toBeFalse();
+    expect($otherRule->fresh()->is_approved)->toBeFalse();
+});
+
 test('the rule form stays open while editing and closes after saving', function () {
     Livewire::test(RuleManager::class)
         ->call('toggleBuilder')
@@ -249,6 +280,45 @@ test('watched folders are automatically previewed every 30 seconds with counts b
         expect(session('keeper.preview.automatic'))->toBeTrue();
         expect(session('keeper.preview.plans'))->toHaveCount(1);
         expect(session('keeper.preview.plans.0.folder_id'))->toBe($folder->id);
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('automatic preview shows details for matching files but hides unmatched filenames', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-auto-matched-preview-'.Str::uuid();
+    File::makeDirectory($folderPath);
+    File::put($folderPath.DIRECTORY_SEPARATOR.'invoice.pdf', 'matching contents');
+    File::put($folderPath.DIRECTORY_SEPARATOR.'personal.pdf', 'unmatched contents');
+    WatchedFolder::query()->create([
+        'name' => 'Automatic matching preview test',
+        'path' => realpath($folderPath),
+        'path_hash' => hash('sha256', realpath($folderPath)),
+        'is_active' => true,
+    ]);
+
+    try {
+        $this->post(route('rules.store'), [
+            'name' => 'Archive invoices',
+            'logic' => 'and',
+            'conditions' => [
+                ['field' => 'name', 'operator' => 'contains', 'value' => 'invoice'],
+            ],
+            'action' => 'rename',
+            'target' => 'invoice-archived.pdf',
+        ])->assertRedirect();
+
+        Livewire::test(FolderManager::class)
+            ->call('autoPreview')
+            ->call('autoPreview');
+
+        Livewire::test(PreviewPlan::class)
+            ->assertSee('invoice.pdf')
+            ->assertSee('Archive invoices')
+            ->assertSee('Rename')
+            ->assertSee('invoice-archived.pdf')
+            ->assertDontSee('personal.pdf')
+            ->assertSee('unmatched file names remain hidden');
     } finally {
         File::deleteDirectory($folderPath);
     }
@@ -600,7 +670,8 @@ test('a directory inventory scan records recursive file details and file type to
             ->assertSee('Files in a selected directory')
             ->assertSee($folderPath)
             ->assertSee('report.pdf')
-            ->assertSee('notes.txt');
+            ->assertSee('notes.txt')
+            ->assertSee(number_format($scan->fresh()->total_bytes).' B');
     } finally {
         File::deleteDirectory($folderPath);
     }

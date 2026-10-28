@@ -122,8 +122,14 @@ class PreviewPlan extends Component
 
     public function render(): View
     {
+        $preview = session('keeper.preview', []);
+        $plans = collect($preview['plans'] ?? []);
+
         return view('livewire.preview-plan', [
-            'preview' => session('keeper.preview', []),
+            'preview' => $preview,
+            'displayPlans' => ! empty($preview['automatic'])
+                ? $plans->filter(fn (mixed $plan): bool => is_array($plan) && ($plan['rule_id'] ?? null) !== null)
+                : $plans,
         ]);
     }
 }

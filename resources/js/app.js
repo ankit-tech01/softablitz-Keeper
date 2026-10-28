@@ -1,3 +1,14 @@
+function getConditionPlaceholder(fieldValue) {
+    const placeholders = {
+        name: 'invoice',
+        extension: 'pdf',
+        size: '1048576',
+        age: '30',
+    };
+
+    return placeholders[fieldValue] ?? 'invoice';
+}
+
 function conditionNodes(container) {
     return Array.from(container.children).filter((child) => child.matches('[data-condition-node]'));
 }
@@ -48,6 +59,13 @@ function updateConditionIndexes(container = document.querySelector('#conditions'
         bindLiveModel(operator, `${modelBase}.operator`);
         value.name = `${base}[value]`;
         bindLiveModel(value, `${modelBase}.value`, true);
+
+        const placeholderValue = getConditionPlaceholder(field.value || 'name');
+        value.placeholder = placeholderValue;
+        if (!value.value && !value.dataset.placeholderSet) {
+            value.dataset.placeholderSet = 'true';
+            value.setAttribute('placeholder', placeholderValue);
+        }
     });
 }
 
@@ -117,7 +135,9 @@ document.addEventListener('change', (event) => {
         return;
     }
 
-    const operatorSelect = fieldSelect.closest('.condition-row').querySelector('[data-condition-operator]');
+    const row = fieldSelect.closest('.condition-row');
+    const operatorSelect = row.querySelector('[data-condition-operator]');
+    const valueInput = row.querySelector('[data-condition-value]');
     const operators = ['size', 'age'].includes(fieldSelect.value)
         ? [['equals', 'equals'], ['greater_than', 'is greater than'], ['less_than', 'is less than']]
         : [['contains', 'contains'], ['equals', 'equals'], ['starts_with', 'starts with'], ['ends_with', 'ends with']];
@@ -132,6 +152,8 @@ document.addEventListener('change', (event) => {
     operatorSelect.value = operators[0][0];
     operatorSelect.name = fieldSelect.name.replace('[field]', '[operator]');
     bindLiveModel(operatorSelect, fieldSelect.getAttribute('wire:model.live').replace('.field', '.operator'));
+    valueInput.placeholder = getConditionPlaceholder(fieldSelect.value);
+    valueInput.value = valueInput.value || '';
     operatorSelect.dispatchEvent(new Event('change', { bubbles: true }));
 });
 
