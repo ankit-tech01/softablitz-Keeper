@@ -12,11 +12,11 @@ use App\Services\FileActionService;
 use App\Services\FileDispatcher;
 use App\Services\FolderPathService;
 use App\Services\FolderScanner;
+use App\Services\KeeperTrashService;
 use App\Services\RuleEvaluator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -433,22 +433,16 @@ class KeeperController extends Controller
         return to_route('home', ['tab' => 'activity'])->with('success', "{$undone} action(s) undone in reverse order.");
     }
 
-    public function emptyTrash(): RedirectResponse
+    public function emptyTrash(KeeperTrashService $trash): RedirectResponse
     {
-        $trashPath = storage_path('app/private/keeper-trash');
-
-        if (! is_dir($trashPath)) {
-            return to_route('home', ['tab' => 'activity'])->with('info', 'Keeper trash is already empty.');
+        try {
+            $removedFiles = $trash->empty();
+        } catch (RuntimeException $exception) {
+            return back()->withErrors(['trash' => $exception->getMessage()]);
         }
 
-        $removedFiles = 0;
-
-        foreach (File::files($trashPath) as $file) {
-            if (! File::delete($file->getPathname())) {
-                throw new RuntimeException('A trash file could not be deleted. Check the file permissions and try again.');
-            }
-
-            $removedFiles++;
+        if ($removedFiles === 0) {
+            return to_route('home', ['tab' => 'activity'])->with('info', 'Keeper trash is already empty.');
         }
 
         return to_route('home', ['tab' => 'activity'])->with('success', "{$removedFiles} file(s) permanently removed from Keeper trash. These files can no longer be restored.");

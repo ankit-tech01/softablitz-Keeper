@@ -6,8 +6,8 @@ use App\Jobs\ExecuteFileAction;
 use App\Models\FileExecution;
 use App\Models\LedgerEntry;
 use App\Services\FileActionService;
+use App\Services\KeeperTrashService;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Facades\File;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use RuntimeException;
@@ -61,28 +61,19 @@ class ActivityManager extends Component
         $this->messageIsError = $errors !== [];
     }
 
-    public function emptyTrash(): void
+    public function emptyTrash(KeeperTrashService $trash): void
     {
-        $trashPath = storage_path('app/private/keeper-trash');
-
-        if (! is_dir($trashPath)) {
-            $this->message = 'Keeper trash is already empty.';
-            $this->messageIsError = false;
+        try {
+            $removedFiles = $trash->empty();
+        } catch (RuntimeException $exception) {
+            $this->setError($exception->getMessage());
 
             return;
         }
 
-        $removedFiles = 0;
-
-        foreach (File::files($trashPath) as $file) {
-            if (! File::delete($file->getPathname())) {
-                throw new RuntimeException('A trash file could not be deleted. Check the file permissions and try again.');
-            }
-
-            $removedFiles++;
-        }
-
-        $this->message = "{$removedFiles} file(s) permanently removed from Keeper trash.";
+        $this->message = $removedFiles === 0
+            ? 'Keeper trash is already empty.'
+            : "{$removedFiles} file(s) permanently removed from Keeper trash.";
         $this->messageIsError = false;
     }
 

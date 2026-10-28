@@ -14,12 +14,37 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Livewire\Component;
+use Native\Desktop\Dialog;
 
 class FolderManager extends Component
 {
     public string $folderPath = '';
 
     public ?string $message = null;
+
+    public function browseFolder(FolderPathService $paths): void
+    {
+        if (! config('nativephp-internal.running')) {
+            $this->addError('folderPath', 'Folder browsing is available in the Sanctum Keeper desktop app.');
+
+            return;
+        }
+
+        $selectedPath = Dialog::new()
+            ->title('Choose a folder to watch')
+            ->defaultPath(is_dir($this->folderPath) ? $this->folderPath : base_path())
+            ->button('Choose folder')
+            ->folders()
+            ->open();
+
+        if (! is_string($selectedPath) || $selectedPath === '') {
+            return;
+        }
+
+        $this->resetErrorBag('folderPath');
+        $this->folderPath = $paths->resolveWatchedFolder($selectedPath, 'folderPath');
+        $this->updatedFolderPath($this->folderPath);
+    }
 
     public function updatedFolderPath(string $path): void
     {

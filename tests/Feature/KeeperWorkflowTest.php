@@ -422,6 +422,39 @@ test('completed file actions leave the processing queue but remain in the action
         ->assertSee('ledger-entry-'.$entry->id);
 });
 
+test('emptying Keeper trash removes nested files and keeps the trash folder', function () {
+    $trashPath = storage_path('app/private/keeper-trash');
+    File::makeDirectory($trashPath . DIRECTORY_SEPARATOR . 'nested', 0755, true);
+    File::put($trashPath . DIRECTORY_SEPARATOR . 'top-level.txt', 'top level');
+    File::put($trashPath . DIRECTORY_SEPARATOR . 'nested' . DIRECTORY_SEPARATOR . 'nested.txt', 'nested');
+
+    try {
+        Livewire::test(\App\Livewire\ActivityManager::class)
+            ->call('emptyTrash')
+            ->assertHasNoErrors()
+            ->assertSee('2 file(s) permanently removed from Keeper trash.');
+
+        expect(File::allFiles($trashPath, true))->toBe([]);
+        expect(is_dir($trashPath))->toBeTrue();
+    } finally {
+        File::deleteDirectory($trashPath);
+    }
+});
+
+test('empty Keeper trash reports already empty when no files remain', function () {
+    $trashPath = storage_path('app/private/keeper-trash');
+    File::makeDirectory($trashPath, 0755, true);
+
+    try {
+        Livewire::test(\App\Livewire\ActivityManager::class)
+            ->call('emptyTrash')
+            ->assertHasNoErrors()
+            ->assertSee('Keeper trash is already empty.');
+    } finally {
+        File::deleteDirectory($trashPath);
+    }
+});
+
 test('file actions are dispatched to the default queue used by the local worker', function () {
     Queue::fake();
     $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-dispatch-' . Str::uuid();

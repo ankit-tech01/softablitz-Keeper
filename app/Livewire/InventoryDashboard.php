@@ -11,6 +11,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Native\Desktop\Dialog;
 use Native\Desktop\Facades\Shell;
 
 class InventoryDashboard extends Component
@@ -24,6 +25,31 @@ class InventoryDashboard extends Component
     public ?string $statusMessage = null;
 
     public bool $statusIsError = false;
+
+    public function browseDirectory(FolderPathService $paths): void
+    {
+        if (! config('nativephp-internal.running')) {
+            $this->statusMessage = 'Folder browsing is available in the Sanctum Keeper desktop app.';
+            $this->statusIsError = true;
+
+            return;
+        }
+
+        $selectedPath = Dialog::new()
+            ->title('Choose a directory to scan')
+            ->defaultPath(is_dir($this->directoryPath) ? $this->directoryPath : base_path())
+            ->button('Choose directory')
+            ->folders()
+            ->open();
+
+        if (! is_string($selectedPath) || $selectedPath === '') {
+            return;
+        }
+
+        $this->resetErrorBag('directoryPath');
+        $this->directoryPath = $paths->resolveWatchedFolder($selectedPath, 'directoryPath');
+        $this->selectedDirectory = $this->directoryPath;
+    }
 
     public function updatedSelectedDirectory(string $path): void
     {

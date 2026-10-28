@@ -33,7 +33,13 @@
                     </button>
                 @endif
             </div>
-            <input id="inventory-directory" wire:model.live.debounce.500ms="directoryPath" type="text" maxlength="4096" placeholder="C:\Users\you\Downloads" required @error('directoryPath') aria-invalid="true" aria-describedby="inventory-directory-error" @enderror>
+            <div class="inventory-path-picker">
+                <input id="inventory-directory" wire:model="directoryPath" type="text" placeholder="Choose a folder from your computer" readonly required @error('directoryPath') aria-invalid="true" aria-describedby="inventory-directory-error" @enderror>
+                <button class="button button-soft" type="button" wire:click="browseDirectory" wire:loading.attr="disabled" wire:target="browseDirectory" aria-label="Browse computer for a directory">
+                    <span wire:loading.remove wire:target="browseDirectory">Browse…</span>
+                    <span wire:loading wire:target="browseDirectory">Opening…</span>
+                </button>
+            </div>
             <div class="inventory-actions">
                 <button class="button button-dark" type="submit" wire:loading.attr="disabled" @disabled($isScanning)>
                     <span wire:loading.remove wire:target="startScan">Scan directory</span>

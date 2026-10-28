@@ -516,6 +516,21 @@ p {
     width: 100%;
 }
 
+.inventory-path-picker {
+    display: flex;
+    min-width: 0;
+    gap: 7px;
+}
+
+.inventory-path-picker input {
+    flex: 1 1 auto;
+    width: auto;
+}
+
+.inventory-path-picker button {
+    flex: 0 0 auto;
+}
+
 .inventory-directory-delete {
     display: inline-grid;
     flex: 0 0 42px;
@@ -613,6 +628,10 @@ p {
 @media (max-width: 760px) {
     .inventory-directory-form .form-row {
         grid-template-columns: 1fr;
+    }
+
+    .inventory-path-picker {
+        width: 100%;
     }
 }
 

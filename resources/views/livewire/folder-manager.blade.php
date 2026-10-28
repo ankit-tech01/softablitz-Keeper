@@ -37,13 +37,17 @@
         <form class="add-folder-form" wire:submit="addFolder">
             <label for="folder_path">ADD A LOCAL FOLDER</label>
             <div class="form-row">
-                <input id="folder_path" wire:model.live.debounce.500ms="folderPath" type="text" placeholder="C:\Users\you\Downloads" required @error('folderPath') aria-invalid="true" aria-describedby="folder-path-error" @enderror>
+                <input id="folder_path" wire:model="folderPath" type="text" placeholder="Choose a folder from your computer" readonly required @error('folderPath') aria-invalid="true" aria-describedby="folder-path-error" @enderror>
+                <button class="button button-soft" type="button" wire:click="browseFolder" wire:loading.attr="disabled" wire:target="browseFolder" aria-label="Browse computer for a folder">
+                    <span wire:loading.remove wire:target="browseFolder">Browse…</span>
+                    <span wire:loading wire:target="browseFolder">Opening…</span>
+                </button>
                 <button class="button button-dark" type="submit" wire:loading.attr="disabled" wire:target="addFolder">
                     <span wire:loading.remove wire:target="addFolder">Add folder</span>
                     <span wire:loading wire:target="addFolder">Adding…</span><span>→</span>
                 </button>
             </div>
-            <small>Folder paths stay on this device. System and root folders are blocked.</small>
+            <small>Browse to choose a folder on this device. System and root folders are blocked.</small>
             @error('folderPath')<small id="folder-path-error" class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
         </form>
     @else
