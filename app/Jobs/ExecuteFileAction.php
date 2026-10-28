@@ -9,6 +9,7 @@ use App\Services\RuleEvaluator;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -32,9 +33,22 @@ class ExecuteFileAction implements ShouldBeUnique, ShouldQueue
 
     public function handle(RuleEvaluator $evaluator, FileActionService $actions): void
     {
-        $execution = FileExecution::query()->where('unique_key', $this->uniqueKey)->firstOrFail();
+        $claimed = FileExecution::query()
+            ->where('unique_key', $this->uniqueKey)
+            ->where('status', 'queued')
+            ->update([
+                'status' => 'processing',
+                'attempts' => DB::raw('attempts + 1'),
+                'last_error' => null,
+            ]);
 
-        if (in_array($execution->status, ['completed', 'ignored'], true)) {
+        if ($claimed === 0) {
+            return;
+        }
+
+        $execution = FileExecution::query()->where('unique_key', $this->uniqueKey)->first();
+
+        if ($execution === null) {
             return;
         }
 
@@ -91,12 +105,6 @@ class ExecuteFileAction implements ShouldBeUnique, ShouldQueue
 
             return;
         }
-
-        $execution->update([
-            'status' => 'processing',
-            'attempts' => $execution->attempts + 1,
-            'last_error' => null,
-        ]);
 
         try {
             $actions->execute($execution, $rule);

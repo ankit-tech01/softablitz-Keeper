@@ -19,6 +19,12 @@ class PreviewPlan extends Component
     #[On('keeper-preview-updated')]
     public function refreshPlan(): void {}
 
+    #[On('keeper-workspace-reset')]
+    public function clearAfterWorkspaceReset(): void
+    {
+        $this->message = null;
+    }
+
     public function confirmPlan(
         RuleEvaluator $evaluator,
         FileDispatcher $dispatcher,

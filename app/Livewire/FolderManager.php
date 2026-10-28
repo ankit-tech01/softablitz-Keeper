@@ -12,6 +12,7 @@ use App\Services\RuleEvaluator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Livewire\Attributes\On;
 use Livewire\Component;
 use Native\Desktop\Dialog;
 use RuntimeException;
@@ -21,6 +22,13 @@ class FolderManager extends Component
     public string $folderPath = '';
 
     public ?string $message = null;
+
+    #[On('keeper-workspace-reset')]
+    public function clearAfterWorkspaceReset(): void
+    {
+        $this->reset('folderPath', 'message');
+        $this->resetErrorBag();
+    }
 
     /** @var array<int, int> */
     public array $newFilesByFolder = [];
@@ -94,6 +102,7 @@ class FolderManager extends Component
         );
         $this->folderPath = '';
         $this->message = 'Folder added. Scan it twice to confirm files have finished downloading.';
+        $this->dispatch('keeper-folder-updated');
     }
 
     public function removeFolder(int $folderId): void
@@ -111,6 +120,7 @@ class FolderManager extends Component
         });
 
         $this->message = 'Folder removed. Existing ledger history was kept.';
+        $this->dispatch('keeper-folder-updated');
     }
 
     public function previewFolder(

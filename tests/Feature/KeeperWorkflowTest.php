@@ -5,7 +5,9 @@ use App\Jobs\ScanDeviceInventory;
 use App\Livewire\ActivityManager;
 use App\Livewire\FolderManager;
 use App\Livewire\InventoryDashboard;
+use App\Livewire\ResetWorkspace;
 use App\Livewire\RuleManager;
+use App\Livewire\WorkspaceStats;
 use App\Models\AutomationRule;
 use App\Models\FileExecution;
 use App\Models\FileObservation;
@@ -16,6 +18,7 @@ use App\Models\WatchedFolder;
 use App\Services\DeviceInventoryScanner;
 use App\Services\FileDispatcher;
 use App\Services\FolderScanner;
+use App\Services\KeeperTrashService;
 use App\Services\RuleEvaluator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -333,6 +336,129 @@ test('the Livewire rule form validates fields as the user types', function () {
         ->assertHasErrors(['conditions'])
         ->set('conditions', [['field' => 'name', 'operator' => 'contains', 'value' => 'invoice']])
         ->assertHasNoErrors(['conditions']);
+});
+
+test('resetting the workspace clears Keeper data, queued jobs, and trash', function () {
+    $folder = WatchedFolder::query()->create([
+        'name' => 'Reset folder',
+        'path' => sys_get_temp_dir(),
+        'path_hash' => hash('sha256', 'reset-folder'),
+        'is_active' => true,
+    ]);
+    $rule = AutomationRule::query()->create([
+        'name' => 'Reset rule',
+        'conditions' => [['field' => 'name', 'operator' => 'contains', 'value' => 'report']],
+        'logic' => 'and',
+        'action' => 'trash',
+        'priority' => 0,
+        'is_enabled' => true,
+    ]);
+    FileObservation::query()->create([
+        'watched_folder_id' => $folder->id,
+        'path_hash' => hash('sha256', 'observed-file'),
+        'file_path' => sys_get_temp_dir().DIRECTORY_SEPARATOR.'report.pdf',
+        'file_size' => 100,
+        'modified_at' => time(),
+        'stable_scans' => 2,
+        'last_seen_at' => now(),
+    ]);
+    $execution = FileExecution::query()->create([
+        'unique_key' => hash('sha256', 'queued-reset-execution'),
+        'watched_folder_id' => $folder->id,
+        'automation_rule_id' => $rule->id,
+        'file_path' => sys_get_temp_dir().DIRECTORY_SEPARATOR.'report.pdf',
+        'modified_at' => time(),
+        'checksum' => str_repeat('a', 64),
+        'status' => 'queued',
+    ]);
+    LedgerEntry::query()->create([
+        'entry_uuid' => Str::uuid()->toString(),
+        'file_execution_id' => $execution->id,
+        'automation_rule_id' => $rule->id,
+        'action' => 'trash',
+        'source_path' => $execution->file_path,
+        'checksum' => str_repeat('a', 64),
+        'status' => 'completed',
+    ]);
+    $scan = InventoryScan::query()->create([
+        'roots' => [sys_get_temp_dir()],
+        'status' => 'completed',
+        'files_count' => 1,
+    ]);
+    InventoryFile::query()->create([
+        'inventory_scan_id' => $scan->id,
+        'path' => sys_get_temp_dir().DIRECTORY_SEPARATOR.'report.pdf',
+        'name' => 'report.pdf',
+        'extension' => 'pdf',
+        'size' => 100,
+        'created_at_timestamp' => time(),
+        'modified_at_timestamp' => time(),
+    ]);
+
+    $now = time();
+    DB::table('jobs')->insert([
+        [
+            'queue' => 'default',
+            'payload' => '{"displayName":"ExecuteFileAction"}',
+            'attempts' => 0,
+            'reserved_at' => null,
+            'available_at' => $now,
+            'created_at' => $now,
+        ],
+        [
+            'queue' => 'default',
+            'payload' => '{"displayName":"UnrelatedJob"}',
+            'attempts' => 0,
+            'reserved_at' => null,
+            'available_at' => $now,
+            'created_at' => $now,
+        ],
+    ]);
+
+    $trash = Mockery::mock(KeeperTrashService::class);
+    $trash->shouldReceive('empty')->once()->andReturn(2);
+    app()->instance(KeeperTrashService::class, $trash);
+
+    Livewire::test(ResetWorkspace::class)
+        ->call('resetWorkspace')
+        ->assertSee('2 trash file(s) were permanently deleted')
+        ->assertDontSee('role="alert"');
+
+    expect(WatchedFolder::query()->count())->toBe(0);
+    expect(AutomationRule::query()->count())->toBe(0);
+    expect(FileObservation::query()->count())->toBe(0);
+    expect(FileExecution::query()->count())->toBe(0);
+    expect(LedgerEntry::query()->count())->toBe(0);
+    expect(InventoryScan::query()->count())->toBe(0);
+    expect(InventoryFile::query()->count())->toBe(0);
+    expect(DB::table('jobs')->count())->toBe(1);
+    expect(DB::table('jobs')->value('payload'))->toContain('UnrelatedJob');
+    Livewire::test(WorkspaceStats::class)
+        ->assertSee('0 / 3')
+        ->assertSee('0 rules')
+        ->assertSee('0 files')
+        ->assertSee('0 waiting');
+});
+
+test('reset refuses to run while a file action is processing', function () {
+    FileExecution::query()->create([
+        'unique_key' => hash('sha256', 'processing-reset-execution'),
+        'file_path' => sys_get_temp_dir().DIRECTORY_SEPARATOR.'report.pdf',
+        'modified_at' => time(),
+        'checksum' => str_repeat('a', 64),
+        'status' => 'processing',
+    ]);
+
+    $trash = Mockery::mock(KeeperTrashService::class);
+    $trash->shouldNotReceive('empty');
+    app()->instance(KeeperTrashService::class, $trash);
+
+    Livewire::test(ResetWorkspace::class)
+        ->call('resetWorkspace')
+        ->assertSee('A file action is still running')
+        ->assertSee('role="alert"');
+
+    expect(FileExecution::query()->count())->toBe(1);
 });
 
 test('a concurrent observation insert is reconciled without failing the folder scan', function () {

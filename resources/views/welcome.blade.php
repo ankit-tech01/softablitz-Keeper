@@ -84,31 +84,13 @@
                         <h1>A calmer kind of <em>organized.</em></h1>
                         <p>Local-first file care, guided by rules you can preview before they run.</p>
                     </div>
-                    <a class="button button-dark" href="#folders"><span>＋</span> Add a folder</a>
+                    <div class="page-heading-actions">
+                        <a class="button button-dark" href="#folders"><span>＋</span> Add a folder</a>
+                        @livewire('reset-workspace')
+                    </div>
                 </section>
 
-                <section class="stats-grid" aria-label="Workspace summary">
-                    <article class="stat-card">
-                        <div class="stat-top"><span>WATCHING</span><span class="stat-icon green">◎</span></div>
-                        <div class="stat-value">{{ $stats['folders'] }}<small> / 3</small></div>
-                        <div class="stat-foot">Local folders protected</div>
-                    </article>
-                    <article class="stat-card">
-                        <div class="stat-top"><span>ACTIVE RULES</span><span class="stat-icon lavender">⌘</span></div>
-                        <div class="stat-value">{{ $stats['rules'] }}<small> rules</small></div>
-                        <div class="stat-foot">First match wins, every time</div>
-                    </article>
-                    <article class="stat-card">
-                        <div class="stat-top"><span>FILES ORGANIZED</span><span class="stat-icon peach">↗</span></div>
-                        <div class="stat-value">{{ number_format($stats['organized']) }}<small> files</small></div>
-                        <div class="stat-foot">Recorded in your action ledger</div>
-                    </article>
-                    <article class="stat-card">
-                        <div class="stat-top"><span>IN THE QUEUE</span><span class="stat-icon blue">◷</span></div>
-                        <div class="stat-value">{{ $stats['queued'] }}<small> waiting</small></div>
-                        <div class="stat-foot">Settled files only</div>
-                    </article>
-                </section>
+                @livewire('workspace-stats')
 
                 @livewire('inventory-dashboard')
 
@@ -124,25 +106,7 @@
                     <aside class="side-column">
                         @livewire('preview-summary')
 
-                        <section class="mini-panel">
-                            <div class="mini-heading">
-                                <div>
-                                    <div class="eyebrow">04 / RECENT ACTIVITY</div>
-                                    <h3>Latest actions</h3>
-                                </div><a href="{{ route('home', ['tab' => 'activity']) }}" wire:navigate
-                                    data-navigate-noscroll>View all →</a>
-                            </div>
-                            @forelse ($entries->take(5) as $entry)
-                                <div class="activity-line"><span
-                                        class="activity-mark {{ $entry->status === 'completed' ? 'mark-done' : 'mark-error' }}">{{ $entry->status === 'completed' ? '✓' : '!' }}</span>
-                                    <div class="activity-copy"><strong>{{ ucfirst($entry->action) }} ·
-                                            {{ basename($entry->source_path) }}</strong><small>{{ $entry->created_at->diffForHumans() }}</small>
-                                    </div>
-                                </div>
-                            @empty
-                                <div class="mini-empty">Your first file action will show up here.</div>
-                            @endforelse
-                        </section>
+                        @livewire('recent-activity')
 
                         <section class="safety-card"><span class="safety-icon">◌</span>
                             <div><strong>Undo is built in</strong>

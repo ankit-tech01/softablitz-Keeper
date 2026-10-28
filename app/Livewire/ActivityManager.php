@@ -28,6 +28,13 @@ class ActivityManager extends Component
     #[On('keeper-activity-updated')]
     public function refreshActivity(): void {}
 
+    #[On('keeper-workspace-reset')]
+    public function clearAfterWorkspaceReset(): void
+    {
+        $this->reset('message', 'messageIsError', 'showAllEntries');
+        $this->resetPage();
+    }
+
     public function toggleAllEntries(): void
     {
         $this->showAllEntries = ! $this->showAllEntries;

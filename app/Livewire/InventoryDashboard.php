@@ -9,6 +9,7 @@ use App\Models\WatchedFolder;
 use App\Services\FolderPathService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Native\Desktop\Dialog;
@@ -25,6 +26,15 @@ class InventoryDashboard extends Component
     public ?string $statusMessage = null;
 
     public bool $statusIsError = false;
+
+    #[On('keeper-workspace-reset')]
+    public function clearAfterWorkspaceReset(): void
+    {
+        $this->reset('directoryPath', 'selectedDirectory', 'statusMessage');
+        $this->statusIsError = false;
+        $this->resetPage();
+        $this->resetErrorBag();
+    }
 
     public function browseDirectory(FolderPathService $paths): void
     {

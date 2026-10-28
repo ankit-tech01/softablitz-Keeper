@@ -9,6 +9,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\On;
 use Livewire\Component;
 use Native\Desktop\Dialog;
 
@@ -28,6 +29,16 @@ class RuleManager extends Component
     public string $schedule = '';
 
     public ?string $message = null;
+
+    #[On('keeper-workspace-reset')]
+    public function clearAfterWorkspaceReset(): void
+    {
+        $this->reset('name', 'conditions', 'logic', 'action', 'target', 'schedule', 'message');
+        $this->conditions = [['field' => 'name', 'operator' => 'contains', 'value' => '']];
+        $this->logic = 'and';
+        $this->action = 'rename';
+        $this->resetErrorBag();
+    }
 
     public bool $builderOpen = false;
 
@@ -208,6 +219,7 @@ class RuleManager extends Component
         });
 
         $this->message = 'Rule status updated.';
+        $this->dispatch('keeper-rules-updated');
     }
 
     public function moveRule(int $ruleId, string $direction): void

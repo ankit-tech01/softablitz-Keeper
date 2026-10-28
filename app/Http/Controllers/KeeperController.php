@@ -27,21 +27,7 @@ class KeeperController extends Controller
 {
     public function index(): View
     {
-        $folders = WatchedFolder::query()->withCount('observations')->orderBy('created_at')->get();
-        $rules = AutomationRule::query()->orderBy('priority')->orderBy('id')->get();
-        return view('welcome', [
-            'folders' => $folders,
-            'rules' => $rules,
-            'entries' => LedgerEntry::query()->latest()->limit(12)->get(),
-            'executions' => FileExecution::query()->latest()->limit(8)->get(),
-            'preview' => session('keeper.preview', []),
-            'stats' => [
-                'folders' => $folders->where('is_active', true)->count(),
-                'rules' => $rules->where('is_enabled', true)->count(),
-                'organized' => LedgerEntry::query()->where('status', 'completed')->whereNull('undone_at')->count(),
-                'queued' => FileExecution::query()->whereIn('status', ['queued', 'processing'])->count(),
-            ],
-        ]);
+        return view('welcome');
     }
 
     public function storeFolder(Request $request, FolderPathService $paths): RedirectResponse

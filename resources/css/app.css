@@ -303,6 +303,38 @@ a {
     margin-bottom: 26px;
 }
 
+.page-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.workspace-reset {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 5px;
+}
+
+.workspace-reset .button-danger {
+    min-height: 36px;
+}
+
+.workspace-reset-error,
+.workspace-reset-success {
+    max-width: 310px;
+    font-size: 11px;
+    text-align: right;
+}
+
+.workspace-reset-error {
+    color: #99574b;
+}
+
+.workspace-reset-success {
+    color: #315a40;
+}
+
 .eyebrow {
     display: flex;
     align-items: center;
@@ -382,6 +414,16 @@ p {
     border-color: #e4e9e1;
     background: #fff;
     color: #47684e;
+}
+
+.button-danger {
+    border-color: #ecd8d5;
+    background: #fff;
+    color: #99574b;
+}
+
+.button-danger:hover {
+    background: #fbf3f1;
 }
 
 .button-full {
@@ -1844,8 +1886,18 @@ td strong {
         flex-direction: column;
     }
 
-    .page-heading .button {
+    .page-heading-actions {
         align-self: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .workspace-reset {
+        align-items: flex-start;
+    }
+
+    .workspace-reset-error,
+    .workspace-reset-success {
+        text-align: left;
     }
 }
 
