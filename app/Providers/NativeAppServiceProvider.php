@@ -16,17 +16,21 @@ class NativeAppServiceProvider implements ProvidesPhpIni
      */
     public function boot(): void
     {
-        Window::open();
+
+        Window::open()
+            ->width(1200)
+            ->height(800);
 
         if (! config('nativephp-internal.running')) {
             return;
         }
 
         MenuBar::create()
-            ->icon(public_path('favicon.ico'))
+            ->icon(public_path('icon.ico'))
             ->label('Keeper')
             ->tooltip('Sanctum Keeper')
             ->onlyShowContextMenu()
+            ->showDockIcon(PHP_OS_FAMILY !== 'Darwin')
             ->withContextMenu(Menu::make(
                 Menu::link(route('home'), 'Open Keeper'),
                 Menu::link(route('home', ['tab' => 'activity']), 'Recent activity'),
@@ -49,7 +53,6 @@ class NativeAppServiceProvider implements ProvidesPhpIni
      */
     public function phpIni(): array
     {
-        return [
-        ];
+        return [];
     }
 }

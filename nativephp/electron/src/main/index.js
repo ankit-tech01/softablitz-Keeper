@@ -1,5 +1,5 @@
 import NativePHP from '#plugin';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeImage } from 'electron';
 import path from 'path';
 import { createSplash } from './splash.js';
 // Inherit User's PATH in Process & ChildProcess
@@ -15,6 +15,10 @@ const phpBinary = path.join(buildPath, 'php', executable);
 const appPath = path.join(buildPath, 'app');
 
 let splashWindow;
+
+app.on('browser-window-created', (_event, window) => {
+    window.setIcon(nativeImage.createFromPath(defaultIcon));
+});
 
 app.whenReady().then(() => {
     try {

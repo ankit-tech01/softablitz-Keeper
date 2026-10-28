@@ -111,6 +111,7 @@ export default {
     },
     afterSign: 'build/notarize.js',
     win: {
+        icon: 'build/icon.ico',
         executableName: fileName,
         ...(azureEndpoint && azureCertificateProfileName && azureCodeSigningAccountName
             ? {
