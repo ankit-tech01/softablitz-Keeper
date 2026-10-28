@@ -415,8 +415,13 @@ test('resetting the workspace clears Keeper data, queued jobs, and trash', funct
         ],
     ]);
 
-    $trash = Mockery::mock(KeeperTrashService::class);
-    $trash->shouldReceive('empty')->once()->andReturn(2);
+    $trash = new class extends KeeperTrashService
+    {
+        public function empty(): int
+        {
+            return 2;
+        }
+    };
     app()->instance(KeeperTrashService::class, $trash);
 
     Livewire::test(ResetWorkspace::class)
@@ -434,10 +439,10 @@ test('resetting the workspace clears Keeper data, queued jobs, and trash', funct
     expect(DB::table('jobs')->count())->toBe(1);
     expect(DB::table('jobs')->value('payload'))->toContain('UnrelatedJob');
     Livewire::test(WorkspaceStats::class)
-        ->assertSee('0 / 3')
-        ->assertSee('0 rules')
-        ->assertSee('0 files')
-        ->assertSee('0 waiting');
+        ->assertSee('0<small> / 3</small>', false)
+        ->assertSee('0<small> rules</small>', false)
+        ->assertSee('0<small> files</small>', false)
+        ->assertSee('0<small> waiting</small>', false);
 });
 
 test('reset refuses to run while a file action is processing', function () {
@@ -449,14 +454,19 @@ test('reset refuses to run while a file action is processing', function () {
         'status' => 'processing',
     ]);
 
-    $trash = Mockery::mock(KeeperTrashService::class);
-    $trash->shouldNotReceive('empty');
+    $trash = new class extends KeeperTrashService
+    {
+        public function empty(): int
+        {
+            throw new RuntimeException('Trash should not be emptied while an action is processing.');
+        }
+    };
     app()->instance(KeeperTrashService::class, $trash);
 
     Livewire::test(ResetWorkspace::class)
         ->call('resetWorkspace')
         ->assertSee('A file action is still running')
-        ->assertSee('role="alert"');
+        ->assertSee('role="alert"', false);
 
     expect(FileExecution::query()->count())->toBe(1);
 });
