@@ -11,28 +11,6 @@ use UnexpectedValueException;
 class DeviceInventoryScanner
 {
     /**
-     * @return array<int, string>
-     */
-    public function roots(): array
-    {
-        if (DIRECTORY_SEPARATOR === '\\') {
-            $roots = [];
-
-            foreach (range('A', 'Z') as $letter) {
-                $root = $letter.':\\';
-
-                if (is_dir($root)) {
-                    $roots[] = $root;
-                }
-            }
-
-            return $roots;
-        }
-
-        return [DIRECTORY_SEPARATOR];
-    }
-
-    /**
      * @param  array<int, string>  $roots
      */
     public function scan(InventoryScan $scan, array $roots): void
@@ -88,7 +66,7 @@ class DeviceInventoryScanner
                     $filesCount++;
                     $totalBytes += $file['size'];
 
-                    if (count($batch) >= 500) {
+                    if (count($batch) >= 100) {
                         $this->saveBatch($batch);
                         $batch = [];
                         $scan->update([

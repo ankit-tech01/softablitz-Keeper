@@ -36,21 +36,21 @@ class ScanDeviceInventory implements ShouldQueue
         }
 
         try {
-            $roots = $scanner->roots();
+            $roots = $scan->roots ?? [];
 
-            if ($roots === []) {
-                throw new \RuntimeException('No mounted drives were found to scan.');
+            if (! is_array($roots) || count($roots) !== 1 || ! is_string($roots[0]) || ! is_dir($roots[0])) {
+                throw new \RuntimeException('The selected directory is unavailable.');
             }
 
             $scanner->scan($scan, $roots);
         } catch (Throwable $exception) {
             $scan->update([
                 'status' => 'failed',
-                'error_message' => 'The device scan could not be completed. Check the application log for details.',
+                'error_message' => 'The directory scan could not be completed. Check the application log for details.',
                 'completed_at' => now(),
             ]);
 
-            Log::error('The device inventory scan failed.', [
+            Log::error('The directory inventory scan failed.', [
                 'scan_id' => $scan->id,
                 'error' => $exception->getMessage(),
             ]);
@@ -63,7 +63,7 @@ class ScanDeviceInventory implements ShouldQueue
     {
         InventoryScan::query()->whereKey($this->scanId)->update([
             'status' => 'failed',
-            'error_message' => 'The device scan could not be completed. Check the application log for details.',
+            'error_message' => 'The directory scan could not be completed. Check the application log for details.',
             'completed_at' => now(),
         ]);
     }

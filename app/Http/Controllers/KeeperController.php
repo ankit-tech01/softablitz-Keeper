@@ -3,14 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ExecuteFileAction;
-use App\Jobs\ScanDeviceInventory;
 use App\Models\AutomationRule;
 use App\Models\FileExecution;
-use App\Models\InventoryFile;
-use App\Models\InventoryScan;
 use App\Models\LedgerEntry;
 use App\Models\WatchedFolder;
-use App\Services\DeviceInventoryScanner;
 use App\Services\DesktopNotifier;
 use App\Services\FileActionService;
 use App\Services\FileDispatcher;
@@ -33,26 +29,9 @@ class KeeperController extends Controller
     {
         $folders = WatchedFolder::query()->withCount('observations')->orderBy('created_at')->get();
         $rules = AutomationRule::query()->orderBy('priority')->orderBy('id')->get();
-        $inventoryRun = InventoryScan::query()->latest('id')->first();
-        $completedInventoryRun = InventoryScan::query()->where('status', 'completed')->latest('id')->first();
-        $inventoryFiles = $completedInventoryRun === null
-            ? InventoryFile::query()->whereRaw('1 = 0')->paginate(25)
-            : $completedInventoryRun->files()->orderBy('path')->paginate(25)->withQueryString();
-        $inventoryTypes = $completedInventoryRun === null
-            ? collect()
-            : $completedInventoryRun->files()
-                ->selectRaw('extension, COUNT(*) as files_count')
-                ->groupBy('extension')
-                ->orderByDesc('files_count')
-                ->get();
-
         return view('welcome', [
             'folders' => $folders,
             'rules' => $rules,
-            'inventoryRun' => $inventoryRun,
-            'completedInventoryRun' => $completedInventoryRun,
-            'inventoryFiles' => $inventoryFiles,
-            'inventoryTypes' => $inventoryTypes,
             'entries' => LedgerEntry::query()->latest()->limit(12)->get(),
             'executions' => FileExecution::query()->latest()->limit(8)->get(),
             'preview' => session('keeper.preview', []),
@@ -63,30 +42,6 @@ class KeeperController extends Controller
                 'queued' => FileExecution::query()->whereIn('status', ['queued', 'processing'])->count(),
             ],
         ]);
-    }
-
-    public function scanDeviceInventory(DeviceInventoryScanner $scanner): RedirectResponse
-    {
-        if (InventoryScan::query()->whereIn('status', ['queued', 'scanning'])->exists()) {
-            return to_route('home', ['tab' => 'inventory'])->with('info', 'A device inventory scan is already in progress.');
-        }
-
-        $roots = $scanner->roots();
-
-        if ($roots === []) {
-            return to_route('home', ['tab' => 'inventory'])->withErrors([
-                'inventory' => 'No mounted drives were found to scan.',
-            ]);
-        }
-
-        $scan = InventoryScan::query()->create([
-            'roots' => $roots,
-            'status' => 'queued',
-        ]);
-
-        ScanDeviceInventory::dispatch($scan->id);
-
-        return to_route('home', ['tab' => 'inventory'])->with('success', 'Device inventory scan started. You can refresh this section to see its progress.');
     }
 
     public function storeFolder(Request $request, FolderPathService $paths): RedirectResponse
@@ -506,7 +461,7 @@ class KeeperController extends Controller
         }
 
         $execution->update(['status' => 'queued', 'last_error' => null]);
-        ExecuteFileAction::dispatch($execution->unique_key)->onQueue('organizer');
+        ExecuteFileAction::dispatch($execution->unique_key);
 
         return to_route('home', ['tab' => 'activity'])->with('success', 'File action queued for another attempt.');
     }

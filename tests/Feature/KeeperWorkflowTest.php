@@ -54,6 +54,7 @@ test('a settled file is previewed, renamed once, and restored from the ledger', 
         $entry = LedgerEntry::query()->firstOrFail();
         expect($entry->status)->toBe('completed');
         expect($entry->checksum)->toBe(hash_file('sha256', $destinationPath));
+        expect(FileExecution::query()->firstOrFail()->status)->toBe('completed');
 
         $this->post(route('activity.undo', $entry))->assertRedirect();
 
@@ -200,7 +201,7 @@ test('a device inventory scan records recursive file details and file type total
         expect(InventoryFile::query()->count())->toBe(2);
         $this->get(route('home', ['tab' => 'inventory']))
             ->assertOk()
-            ->assertSee('Files across this device')
+            ->assertSee('Files in a selected directory')
             ->assertSee('report.pdf')
             ->assertSee('notes.txt');
     } finally {
@@ -208,15 +209,24 @@ test('a device inventory scan records recursive file details and file type total
     }
 });
 
-test('the inventory section can queue an on-demand device scan', function () {
+test('the inventory section can queue an on-demand directory scan', function () {
     Queue::fake();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-queue-'.Str::uuid();
+    File::makeDirectory($folderPath);
 
-    $this->post(route('inventory.scan'))
-        ->assertRedirect(route('home', ['tab' => 'inventory']))
-        ->assertSessionHas('success');
+    try {
+        \Livewire\Livewire::test(\App\Livewire\InventoryDashboard::class)
+            ->set('directoryPath', $folderPath)
+            ->call('startScan')
+            ->assertHasNoErrors();
 
-    expect(InventoryScan::query()->firstOrFail()->status)->toBe('queued');
-    Queue::assertPushed(\App\Jobs\ScanDeviceInventory::class);
+        $scan = InventoryScan::query()->firstOrFail();
+        expect($scan->status)->toBe('queued');
+        expect($scan->roots)->toBe([realpath($folderPath)]);
+        Queue::assertPushed(\App\Jobs\ScanDeviceInventory::class);
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
 });
 
 test('the first matching enabled rule wins', function () {

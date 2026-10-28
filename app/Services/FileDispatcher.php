@@ -58,7 +58,7 @@ class FileDispatcher
         });
 
         if ($execution !== null) {
-            ExecuteFileAction::dispatch($execution->unique_key)->onQueue('organizer');
+            ExecuteFileAction::dispatch($execution->unique_key);
         }
 
         return $execution;

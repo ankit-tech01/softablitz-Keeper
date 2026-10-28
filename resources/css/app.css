@@ -1,10 +1,15 @@
+@import '@fontsource-variable/nunito/wght.css';
+@import '@fontsource-variable/nunito/wght-italic.css';
+@import '@fontsource/gabriela/400.css';
+@import '@fontsource/dm-mono/400.css';
+@import '@fontsource/dm-mono/500.css';
 @import 'tailwindcss';
 
 @source '../views';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
 @theme {
-    --font-sans: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: 'Nunito Variable', ui-sans-serif, system-ui, sans-serif;
 }
 
 .panel-heading-actions {
@@ -14,7 +19,7 @@
 }
 
 :root {
-    font-family: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+    font-family: 'Nunito Variable', ui-sans-serif, system-ui, sans-serif;
     color: #22251f;
     background: #f6f7f4;
     font-synthesis: none;
@@ -486,6 +491,32 @@ p {
     margin-bottom: 20px;
 }
 
+.inventory-directory-form {
+    display: grid;
+    gap: 9px;
+    padding: 18px 19px;
+    border-bottom: 1px solid #f0f1ee;
+}
+
+.inventory-directory-form .form-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.5fr) auto;
+    gap: 10px;
+}
+
+.inventory-directory-form input,
+.inventory-directory-form select {
+    min-width: 0;
+}
+
+.inventory-directory-form button {
+    white-space: nowrap;
+}
+
+.inventory-form-error {
+    color: #99574b;
+}
+
 .inventory-panel .panel-heading form {
     margin: 0;
 }
@@ -507,6 +538,7 @@ p {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .inventory-status a {
@@ -518,6 +550,12 @@ p {
 
 .inventory-status-error {
     color: #99574b;
+}
+
+@media (max-width: 760px) {
+    .inventory-directory-form .form-row {
+        grid-template-columns: 1fr;
+    }
 }
 
 .inventory-stats {
