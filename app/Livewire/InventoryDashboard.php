@@ -3,12 +3,15 @@
 namespace App\Livewire;
 
 use App\Jobs\ScanDeviceInventory;
+use App\Models\InventoryFile;
 use App\Models\InventoryScan;
 use App\Models\WatchedFolder;
 use App\Services\FolderPathService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Native\Desktop\Facades\Shell;
 
 class InventoryDashboard extends Component
 {
@@ -18,7 +21,9 @@ class InventoryDashboard extends Component
 
     public string $selectedDirectory = '';
 
-    public ?string $message = null;
+    public ?string $statusMessage = null;
+
+    public bool $statusIsError = false;
 
     public function updatedSelectedDirectory(string $path): void
     {
@@ -30,6 +35,10 @@ class InventoryDashboard extends Component
 
     public function updatedDirectoryPath(string $path): void
     {
+        if ($path !== $this->selectedDirectory) {
+            $this->selectedDirectory = '';
+        }
+
         $this->validateDirectoryPath();
     }
 
@@ -64,21 +73,148 @@ class InventoryDashboard extends Component
         $this->directoryPath = $directory;
         $this->selectedDirectory = $directory;
         $this->resetPage();
-        $this->message = 'Directory scan started. Progress and matching files will appear here as they are found.';
+        $this->statusMessage = 'Directory scan started. Progress and matching files will appear here as they are found.';
+        $this->statusIsError = false;
+    }
+
+    public function openInventoryFile(int $fileId): void
+    {
+        $activeScanId = InventoryScan::query()
+            ->whereIn('status', ['queued', 'scanning'])
+            ->latest('id')
+            ->value('id');
+        $displayedScanId = $activeScanId ?? InventoryScan::query()
+            ->where('status', 'completed')
+            ->when(
+                $this->selectedDirectory !== '',
+                fn ($query) => $query->whereJsonContains('roots', $this->selectedDirectory),
+            )
+            ->latest('id')
+            ->value('id');
+        $file = InventoryFile::query()
+            ->whereKey($fileId)
+            ->where('inventory_scan_id', $displayedScanId)
+            ->firstOrFail();
+        $path = realpath($file->path);
+
+        if ($path === false || $path !== $file->path || ! is_file($path)) {
+            $this->statusMessage = 'This file is no longer available at its scanned location.';
+            $this->statusIsError = true;
+
+            return;
+        }
+
+        if (! config('nativephp-internal.running')) {
+            $this->statusMessage = 'Open this inventory in the Sanctum Keeper desktop app to launch files.';
+            $this->statusIsError = true;
+
+            return;
+        }
+
+        $error = Shell::openFile($path);
+
+        if ($error !== '') {
+            $this->statusMessage = "The file could not be opened: {$error}";
+            $this->statusIsError = true;
+
+            return;
+        }
+
+        $this->statusMessage = null;
+        $this->statusIsError = false;
+    }
+
+    public function cancelScan(): void
+    {
+        $scan = InventoryScan::query()
+            ->whereIn('status', ['queued', 'scanning'])
+            ->latest('id')
+            ->first();
+
+        if ($scan === null) {
+            $this->statusMessage = 'There is no active directory scan to cancel.';
+            $this->statusIsError = true;
+
+            return;
+        }
+
+        $scan->update([
+            'status' => 'cancelled',
+            'completed_at' => now(),
+            'error_message' => 'The directory scan was cancelled by the user.',
+        ]);
+
+        $this->statusMessage = 'Directory scan cancelled. The last completed inventory remains available below.';
+        $this->statusIsError = false;
+        $this->resetPage();
+    }
+
+    public function deleteSelectedDirectory(): void
+    {
+        $directory = $this->selectedDirectory;
+
+        if ($directory === '') {
+            $this->statusMessage = 'Select a saved scan directory before deleting its inventory.';
+
+            return;
+        }
+
+        $scans = InventoryScan::query()->get()->filter(
+            fn (InventoryScan $scan): bool => in_array($directory, $scan->roots ?? [], true),
+        );
+
+        if ($scans->isEmpty()) {
+            $this->statusMessage = 'There is no saved inventory for the selected directory.';
+
+            return;
+        }
+
+        if ($scans->contains(fn (InventoryScan $scan): bool => in_array($scan->status, ['queued', 'scanning'], true))) {
+            $this->statusMessage = 'Wait for the directory scan to finish before deleting its saved inventory.';
+
+            return;
+        }
+
+        DB::transaction(function () use ($scans): void {
+            InventoryScan::query()->whereKey($scans->modelKeys())->delete();
+        });
+
+        $this->directoryPath = '';
+        $this->selectedDirectory = '';
+        $this->resetPage();
+        $this->statusMessage = 'Saved inventory deleted. Files on disk were not changed.';
     }
 
     public function render(): View
     {
-        $latestScan = InventoryScan::query()->latest('id')->first();
-        $isScanning = in_array($latestScan?->status, ['queued', 'scanning'], true);
-        $completedScan = InventoryScan::query()->where('status', 'completed')->latest('id')->first();
-        $displayScan = $isScanning ? $latestScan : $completedScan;
+        $scans = InventoryScan::query()->latest('id')->get();
+        $latestScan = $scans->first();
+        $activeScan = $scans->first(
+            fn (InventoryScan $scan): bool => in_array($scan->status, ['queued', 'scanning'], true),
+        );
+        $isScanning = $activeScan !== null;
+        $selectedScan = $this->selectedDirectory === ''
+            ? null
+            : $scans->first(fn (InventoryScan $scan): bool => in_array($this->selectedDirectory, $scan->roots ?? [], true));
+        $latestScan = $activeScan ?? $selectedScan ?? $latestScan;
+        $completedScan = $this->selectedDirectory === ''
+            ? $scans->first(fn (InventoryScan $scan): bool => $scan->status === 'completed')
+            : $scans->first(fn (InventoryScan $scan): bool => $scan->status === 'completed'
+                && in_array($this->selectedDirectory, $scan->roots ?? [], true));
+        $displayScan = $isScanning ? $activeScan : $completedScan;
         $inventoryFiles = $displayScan?->files()->orderBy('path')->paginate(25);
         $inventoryTypes = $displayScan?->files()
             ->selectRaw('extension, COUNT(*) as files_count')
             ->groupBy('extension')
             ->orderByDesc('files_count')
             ->get() ?? collect();
+        $scannedDirectories = $scans
+            ->flatMap(fn (InventoryScan $scan): array => $scan->roots ?? [])
+            ->filter(fn (mixed $path): bool => is_string($path))
+            ->unique()
+            ->values();
+        $watchedDirectories = WatchedFolder::query()->orderBy('name')->pluck('path');
+        $directories = $scannedDirectories->concat($watchedDirectories)->unique()->sort()->values();
 
         return view('livewire.inventory-dashboard', [
             'latestScan' => $latestScan,
@@ -86,7 +222,8 @@ class InventoryDashboard extends Component
             'displayScan' => $displayScan,
             'inventoryFiles' => $inventoryFiles,
             'inventoryTypes' => $inventoryTypes,
-            'directories' => WatchedFolder::query()->orderBy('name')->get(),
+            'directories' => $directories,
+            'hasSelectedScan' => $scannedDirectories->contains($this->selectedDirectory),
         ]);
     }
 }

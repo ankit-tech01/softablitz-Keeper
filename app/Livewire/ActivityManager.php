@@ -110,7 +110,11 @@ class ActivityManager extends Component
 
     public function render(): View
     {
-        $executions = FileExecution::query()->latest()->limit(8)->get();
+        $executions = FileExecution::query()
+            ->whereIn('status', ['queued', 'processing', 'failed'])
+            ->latest()
+            ->limit(8)
+            ->get();
 
         return view('livewire.activity-manager', [
             'entries' => LedgerEntry::query()->latest()->limit(12)->get(),

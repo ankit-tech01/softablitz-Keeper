@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
+use Native\Desktop\Facades\Shell;
 
 test('a settled file is previewed, renamed once, and restored from the ledger', function () {
     $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-' . Str::uuid();
@@ -265,11 +266,159 @@ test('a directory inventory scan records recursive file details and file type to
         $this->get(route('home', ['tab' => 'inventory']))
             ->assertOk()
             ->assertSee('Files in a selected directory')
+            ->assertSee($folderPath)
             ->assertSee('report.pdf')
             ->assertSee('notes.txt');
     } finally {
         File::deleteDirectory($folderPath);
     }
+});
+
+test('saved directory inventory can be deleted without deleting files on disk', function () {
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-delete-' . Str::uuid();
+    File::makeDirectory($folderPath);
+    $filePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
+    File::put($filePath, 'report contents');
+    $scan = InventoryScan::query()->create([
+        'roots' => [$folderPath],
+        'status' => 'completed',
+        'files_count' => 1,
+    ]);
+    $inventoryFile = InventoryFile::query()->create([
+        'inventory_scan_id' => $scan->id,
+        'path' => $filePath,
+        'name' => 'report.pdf',
+        'extension' => 'pdf',
+        'size' => strlen('report contents'),
+        'created_at_timestamp' => filectime($filePath),
+        'modified_at_timestamp' => filemtime($filePath),
+    ]);
+
+    try {
+        Livewire::test(\App\Livewire\InventoryDashboard::class)
+            ->set('selectedDirectory', $folderPath)
+            ->call('deleteSelectedDirectory')
+            ->assertHasNoErrors()
+            ->assertSee('Saved inventory deleted.')
+            ->assertDontSee($folderPath);
+
+        expect(InventoryScan::query()->find($scan->id))->toBeNull();
+        expect(InventoryFile::query()->find($inventoryFile->id))->toBeNull();
+        expect(is_file($filePath))->toBeTrue();
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('the active inventory scan can be cancelled', function () {
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-cancel-' . Str::uuid();
+    File::makeDirectory($folderPath);
+    $scan = InventoryScan::query()->create([
+        'roots' => [$folderPath],
+        'status' => 'scanning',
+        'files_count' => 0,
+        'total_bytes' => 0,
+    ]);
+
+    try {
+        Livewire::test(\App\Livewire\InventoryDashboard::class)
+            ->set('selectedDirectory', $folderPath)
+            ->call('cancelScan')
+            ->assertHasNoErrors()
+            ->assertSee('Directory scan cancelled.');
+
+        expect($scan->fresh()->status)->toBe('cancelled');
+        expect($scan->fresh()->error_message)->toBe('The directory scan was cancelled by the user.');
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('saved directory inventory cannot be deleted while its scan is running', function () {
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-active-' . Str::uuid();
+    File::makeDirectory($folderPath);
+    $scan = InventoryScan::query()->create([
+        'roots' => [$folderPath],
+        'status' => 'scanning',
+    ]);
+
+    try {
+        Livewire::test(\App\Livewire\InventoryDashboard::class)
+            ->set('selectedDirectory', $folderPath)
+            ->call('deleteSelectedDirectory')
+            ->assertSee('Wait for the directory scan to finish')
+            ->assertSee($folderPath);
+
+        expect(InventoryScan::query()->find($scan->id))->not->toBeNull();
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('inventory file links open files with their default desktop application', function () {
+    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-open-' . Str::uuid();
+    File::makeDirectory($folderPath);
+    $filePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
+    File::put($filePath, 'report contents');
+    $scan = InventoryScan::query()->create([
+        'roots' => [$folderPath],
+        'status' => 'completed',
+        'files_count' => 1,
+    ]);
+    $file = InventoryFile::query()->create([
+        'inventory_scan_id' => $scan->id,
+        'path' => realpath($filePath),
+        'name' => 'report.pdf',
+        'extension' => 'pdf',
+        'size' => strlen('report contents'),
+        'created_at_timestamp' => filectime($filePath),
+        'modified_at_timestamp' => filemtime($filePath),
+    ]);
+    $shell = Shell::fake();
+    config(['nativephp-internal.running' => true]);
+
+    try {
+        Livewire::test(\App\Livewire\InventoryDashboard::class)
+            ->assertSee('Open report.pdf with its default app')
+            ->call('openInventoryFile', $file->id)
+            ->assertHasNoErrors();
+
+        $shell->assertOpenedFile(realpath($filePath));
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('completed file actions leave the processing queue but remain in the action ledger', function () {
+    $path = 'C:\\Users\\test\\Documents\\completed-report.pdf';
+    $checksum = hash('sha256', 'completed report');
+    $execution = FileExecution::query()->create([
+        'unique_key' => hash('sha256', $path),
+        'file_path' => $path,
+        'modified_at' => 1,
+        'checksum' => $checksum,
+        'status' => 'completed',
+        'attempts' => 1,
+        'processed_at' => now(),
+    ]);
+    $entry = LedgerEntry::query()->create([
+        'entry_uuid' => Str::uuid()->toString(),
+        'file_execution_id' => $execution->id,
+        'action' => 'rename',
+        'source_path' => $path,
+        'destination_path' => 'C:\\Users\\test\\Documents\\archived-report.pdf',
+        'checksum' => $checksum,
+        'result_checksum' => $checksum,
+        'status' => 'completed',
+        'completed_at' => now(),
+    ]);
+
+    Livewire::test(\App\Livewire\ActivityManager::class)
+        ->assertSee('Queue is clear.')
+        ->assertSee('completed-report.pdf')
+        ->assertSee('Completed')
+        ->assertDontSee('file-execution-'.$execution->id)
+        ->assertSee('ledger-entry-'.$entry->id);
 });
 
 test('file actions are dispatched to the default queue used by the local worker', function () {
@@ -327,7 +476,8 @@ test('the inventory section can queue an on-demand directory scan', function () 
         \Livewire\Livewire::test(\App\Livewire\InventoryDashboard::class)
             ->set('directoryPath', $folderPath)
             ->call('startScan')
-            ->assertHasNoErrors();
+            ->assertHasNoErrors()
+            ->assertSee('Directory scan started.');
 
         $scan = InventoryScan::query()->firstOrFail();
         expect($scan->status)->toBe('queued');

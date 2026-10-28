@@ -10,25 +10,53 @@
     <form class="inventory-directory-form" wire:submit="startScan">
         <label class="field-label" for="inventory-directory">DIRECTORY TO SCAN</label>
         <div class="form-row">
-            <select wire:model.live="selectedDirectory" aria-label="Choose a watched directory">
-                <option value="">Choose a watched directory (optional)</option>
-                @foreach ($directories as $directory)
-                    <option value="{{ $directory->path }}">{{ $directory->path }}</option>
-                @endforeach
-            </select>
+            <div class="inventory-directory-picker">
+                <select wire:model.live="selectedDirectory" aria-label="Choose a saved or watched directory">
+                    <option value="">Choose a saved or watched directory (optional)</option>
+                    @foreach ($directories as $directory)
+                        <option value="{{ $directory }}">{{ $directory }}</option>
+                    @endforeach
+                </select>
+                <button
+                    class="inventory-directory-delete"
+                    type="button"
+                    wire:click="deleteSelectedDirectory"
+                    wire:confirm="Delete the saved inventory for this directory? Files on disk will not be deleted."
+                    wire:loading.attr="disabled"
+                    wire:target="deleteSelectedDirectory"
+                    aria-label="Delete saved inventory for selected directory"
+                    title="Delete saved inventory"
+                    @disabled(! $hasSelectedScan || $isScanning)
+                >×</button>
+            </div>
             <input id="inventory-directory" wire:model.live.debounce.500ms="directoryPath" type="text" maxlength="4096" placeholder="C:\Users\you\Downloads" required @error('directoryPath') aria-invalid="true" aria-describedby="inventory-directory-error" @enderror>
-            <button class="button button-dark" type="submit" wire:loading.attr="disabled" @disabled($isScanning)>
-                <span wire:loading.remove wire:target="startScan">Scan directory</span>
-                <span wire:loading wire:target="startScan">Starting…</span>
-                <span>↻</span>
-            </button>
+            <div class="inventory-actions">
+                <button class="button button-dark" type="submit" wire:loading.attr="disabled" @disabled($isScanning)>
+                    <span wire:loading.remove wire:target="startScan">Scan directory</span>
+                    <span wire:loading wire:target="startScan">Starting…</span>
+                    <span>↻</span>
+                </button>
+                @if ($isScanning)
+                    <button
+                        class="button button-soft inventory-cancel-button"
+                        type="button"
+                        wire:click="cancelScan"
+                        wire:loading.attr="disabled"
+                        wire:target="cancelScan"
+                        aria-label="Cancel active directory scan"
+                    >
+                        <span wire:loading.remove wire:target="cancelScan">Cancel scan</span>
+                        <span wire:loading wire:target="cancelScan">Cancelling…</span>
+                    </button>
+                @endif
+            </div>
         </div>
         @error('directoryPath')<small id="inventory-directory-error" class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
         <small>Choose a watched directory or enter any existing local folder path. Symbolic links are skipped.</small>
     </form>
 
-    @if ($message)
-        <div class="inventory-status" role="status">{{ $message }}</div>
+    @if ($statusMessage)
+        <div class="inventory-status {{ $statusIsError ? 'inventory-status-error' : '' }}" role="{{ $statusIsError ? 'alert' : 'status' }}">{{ $statusMessage }}</div>
     @endif
 
     @if ($isScanning)
@@ -72,7 +100,17 @@
                 <tbody>
                     @forelse ($inventoryFiles as $file)
                         <tr wire:key="inventory-file-{{ $file->id }}">
-                            <td>{{ $file->name }}{{ $file->extension !== '' ? ' · '.strtoupper($file->extension) : '' }}</td>
+                            <td>
+                                <button
+                                    class="inventory-file-link"
+                                    type="button"
+                                    wire:click="openInventoryFile({{ $file->id }})"
+                                    wire:loading.attr="disabled"
+                                    wire:target="openInventoryFile({{ $file->id }})"
+                                    aria-label="Open {{ $file->name }} with its default app"
+                                    title="Open with default app"
+                                >{{ $file->name }}{{ $file->extension !== '' ? ' · '.strtoupper($file->extension) : '' }}</button>
+                            </td>
                             <td class="mono">{{ $file->path }}</td>
                             <td>{{ number_format($file->size) }} B</td>
                             <td>{{ date('M j, Y H:i', $file->created_at_timestamp) }}</td>

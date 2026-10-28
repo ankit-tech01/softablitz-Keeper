@@ -43,7 +43,7 @@
     </section>
 
     <section class="panel queue-panel">
-        <div class="panel-heading"><div><div class="eyebrow">07 / QUEUE DIAGNOSTICS</div><h2>Processing queue</h2><p>Duplicate scans are deduplicated by file path and modification time.</p></div><span class="count-pill">{{ $executions->count() }} recent jobs</span></div>
+        <div class="panel-heading"><div><div class="eyebrow">07 / QUEUE DIAGNOSTICS</div><h2>Processing queue</h2><p>Completed actions stay in the action ledger above. Duplicate scans are deduplicated by file path and modification time.</p></div><span class="count-pill">{{ $executions->count() }} open jobs</span></div>
         <div class="table-scroll"><table><thead><tr><th>FILE</th><th>STATUS</th><th>ATTEMPTS</th><th>DETAILS</th><th></th></tr></thead><tbody>
             @forelse ($executions as $execution)
                 <tr wire:key="file-execution-{{ $execution->id }}">
@@ -59,7 +59,7 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="5"><div class="mini-empty">No queued actions. Confirm a preview to start.</div></td></tr>
+                <tr><td colspan="5"><div class="mini-empty">Queue is clear. Confirm a preview to queue new file actions.</div></td></tr>
             @endforelse
         </tbody></table></div>
         <div class="worker-note"><span class="status-dot"></span><div><strong>Local worker</strong><p>The desktop app processes confirmed actions automatically. For manual Laravel runs, use <code>php artisan queue:work --queue=default</code>. For continuous folder scans, run <code>php artisan keeper:watch</code>.</p></div></div>

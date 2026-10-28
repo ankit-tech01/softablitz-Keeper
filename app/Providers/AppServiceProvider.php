@@ -24,8 +24,6 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
-<<<<<<< HEAD
-=======
 
         $this->app->booted(function (): void {
             if (! config('nativephp-internal.running')) {
@@ -41,7 +39,6 @@ class AppServiceProvider extends ServiceProvider
                 'queue.batching.database' => $databaseConnection,
             ]);
         });
->>>>>>> 53c9f2d (New updates)
     }
 
     /**

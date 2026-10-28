@@ -504,6 +504,32 @@ p {
     gap: 10px;
 }
 
+.inventory-directory-picker {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px;
+    min-width: 0;
+}
+
+.inventory-directory-picker select {
+    width: 100%;
+}
+
+.inventory-directory-delete {
+    min-width: 38px;
+    border: 1px solid #e8e9e5;
+    border-radius: 9px;
+    background: #fff;
+    color: #99574b;
+    font-size: 21px;
+    line-height: 1;
+}
+
+.inventory-directory-delete:disabled {
+    cursor: not-allowed;
+    opacity: .45;
+}
+
 .inventory-directory-form input,
 .inventory-directory-form select {
     min-width: 0;
@@ -511,6 +537,18 @@ p {
 
 .inventory-directory-form button {
     white-space: nowrap;
+}
+
+.inventory-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.inventory-cancel-button {
+    border: 1px solid #d7d9d3;
+    background: #f7f7f5;
+    color: #4c544f;
 }
 
 .inventory-form-error {
@@ -623,6 +661,28 @@ p {
 .inventory-table-wrap td:nth-child(2) {
     max-width: 360px;
     overflow-wrap: anywhere;
+}
+
+.inventory-file-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #315d42;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: #b6c8b7;
+    text-underline-offset: 3px;
+}
+
+.inventory-file-link:hover {
+    color: #203d2c;
+}
+
+.inventory-file-link:disabled {
+    cursor: wait;
+    opacity: .65;
 }
 
 .inventory-pagination {
