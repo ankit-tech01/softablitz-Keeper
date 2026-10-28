@@ -297,6 +297,7 @@ test('saved directory inventory can be deleted without deleting files on disk', 
     try {
         Livewire::test(\App\Livewire\InventoryDashboard::class)
             ->set('selectedDirectory', $folderPath)
+            ->assertSee('Delete saved inventory for selected directory')
             ->call('deleteSelectedDirectory')
             ->assertHasNoErrors()
             ->assertSee('Saved inventory deleted.')

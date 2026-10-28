@@ -17,17 +17,21 @@
                         <option value="{{ $directory }}">{{ $directory }}</option>
                     @endforeach
                 </select>
-                <button
-                    class="inventory-directory-delete"
-                    type="button"
-                    wire:click="deleteSelectedDirectory"
-                    wire:confirm="Delete the saved inventory for this directory? Files on disk will not be deleted."
-                    wire:loading.attr="disabled"
-                    wire:target="deleteSelectedDirectory"
-                    aria-label="Delete saved inventory for selected directory"
-                    title="Delete saved inventory"
-                    @disabled(! $hasSelectedScan || $isScanning)
-                >×</button>
+                @if ($hasSelectedScan)
+                    <button
+                        class="inventory-directory-delete"
+                        type="button"
+                        wire:click="deleteSelectedDirectory"
+                        wire:confirm="Delete the saved inventory for this directory? Files on disk will not be deleted."
+                        wire:loading.attr="disabled"
+                        wire:target="deleteSelectedDirectory"
+                        aria-label="Delete saved inventory for selected directory"
+                        title="Delete saved inventory"
+                        @disabled($isScanning)
+                    >
+                        <span aria-hidden="true">×</span>
+                    </button>
+                @endif
             </div>
             <input id="inventory-directory" wire:model.live.debounce.500ms="directoryPath" type="text" maxlength="4096" placeholder="C:\Users\you\Downloads" required @error('directoryPath') aria-invalid="true" aria-describedby="inventory-directory-error" @enderror>
             <div class="inventory-actions">

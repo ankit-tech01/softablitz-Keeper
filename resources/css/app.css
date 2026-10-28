@@ -505,29 +505,49 @@ p {
 }
 
 .inventory-directory-picker {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 5px;
+    display: flex;
+    align-items: stretch;
+    gap: 7px;
     min-width: 0;
 }
 
 .inventory-directory-picker select {
+    flex: 1 1 auto;
     width: 100%;
 }
 
 .inventory-directory-delete {
-    min-width: 38px;
-    border: 1px solid #e8e9e5;
-    border-radius: 9px;
-    background: #fff;
-    color: #99574b;
-    font-size: 21px;
+    display: inline-grid;
+    flex: 0 0 42px;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #ead3ce;
+    border-radius: 10px;
+    background: #fff7f5;
+    color: #a64c3c;
+    font-size: 23px;
+    font-weight: 500;
     line-height: 1;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
+}
+
+.inventory-directory-delete:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: #d7a79e;
+    background: #fcebe7;
+    color: #813527;
+}
+
+.inventory-directory-delete:focus-visible {
+    outline: 3px solid rgb(166 76 60 / 24%);
+    outline-offset: 2px;
 }
 
 .inventory-directory-delete:disabled {
     cursor: not-allowed;
-    opacity: .45;
+    opacity: .55;
 }
 
 .inventory-directory-form input,
