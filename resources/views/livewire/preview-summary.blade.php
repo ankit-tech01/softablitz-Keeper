@@ -5,6 +5,8 @@
     @if (!empty($preview['plans']))
         <div class="preview-summary">{{ collect($preview['plans'])->whereNotNull('rule_id')->count() }} matching · {{ count($preview['plans']) }} settled</div>
         <a class="button button-light button-full" href="#preview-plan">Review this plan <span>↓</span></a>
+    @elseif (!empty($preview['automatic']))
+        <div class="preview-summary">0 settled files in the latest scan</div>
     @else
         <div class="preview-empty">Choose <strong>Preview scan</strong> beside a watched folder to create a plan.</div>
     @endif

@@ -773,6 +773,22 @@ p {
     font-size: 10px;
 }
 
+.folder-scan-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 19px;
+    border-bottom: 1px solid #f0f1ee;
+    background: #fbfcfa;
+    color: #858b82;
+    font-size: 11px;
+}
+
+.folder-scan-summary strong {
+    color: #315a40;
+    font-weight: 700;
+}
+
 .folder-row {
     display: flex;
     align-items: center;
@@ -852,6 +868,17 @@ p {
 
 .folder-meta span {
     padding: 0 3px;
+}
+
+.folder-meta .folder-new-count {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: #edf4ec;
+    color: #527d5e;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
 }
 
 .folder-actions,
@@ -1102,24 +1129,33 @@ textarea::placeholder {
     border-top: 1px solid #f0f1ee;
 }
 
-.rule-builder summary {
+.rule-builder-toggle {
     display: flex;
+    width: 100%;
     min-height: 43px;
     align-items: center;
     gap: 8px;
     padding: 0 19px;
+    border: 0;
+    background: transparent;
     color: #477454;
     cursor: pointer;
+    font-family: inherit;
     font-size: 11px;
     font-weight: 700;
-    list-style: none;
+    text-align: left;
 }
 
-.rule-builder summary::-webkit-details-marker {
-    display: none;
+.rule-builder-toggle:hover {
+    background: #fcfdfb;
 }
 
-.rule-builder summary span {
+.rule-builder-toggle:focus-visible {
+    outline: 2px solid #83a88a;
+    outline-offset: -2px;
+}
+
+.rule-builder-toggle span {
     display: grid;
     width: 18px;
     height: 18px;
@@ -1148,6 +1184,22 @@ textarea::placeholder {
 
 .builder-label-row .field-label {
     margin: 0;
+}
+
+.rule-target-picker {
+    display: flex;
+    gap: 7px;
+    min-width: 0;
+}
+
+.rule-target-picker input {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+}
+
+.rule-target-picker button {
+    flex: 0 0 auto;
 }
 
 .text-button {
@@ -1444,8 +1496,27 @@ textarea::placeholder {
 
 .preview-plan-panel,
 .activity-panel,
+.trash-panel,
 .queue-panel {
     margin-top: 16px;
+}
+
+.trash-file-path {
+    max-width: 380px;
+    overflow-wrap: anywhere;
+}
+
+.trash-file-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 14px;
+    white-space: nowrap;
+}
+
+.trash-history-label {
+    color: #858b82;
+    font-size: 10px;
 }
 
 .table-scroll {
@@ -1800,6 +1871,12 @@ td strong {
         align-items: flex-start;
         flex-wrap: wrap;
         padding: 12px;
+    }
+
+    .folder-scan-summary {
+        flex-direction: column;
+        gap: 5px;
+        padding: 9px 12px;
     }
 
     .folder-details {

@@ -34,7 +34,7 @@
                 @endif
             </div>
             <div class="inventory-path-picker">
-                <input id="inventory-directory" wire:model="directoryPath" type="text" placeholder="Choose a folder from your computer" readonly required @error('directoryPath') aria-invalid="true" aria-describedby="inventory-directory-error" @enderror>
+                <input id="inventory-directory" wire:model.blur="directoryPath" type="text" placeholder="Paste a folder path or browse for a directory" required @error('directoryPath') aria-invalid="true" aria-describedby="inventory-directory-error" @enderror>
                 <button class="button button-soft" type="button" wire:click="browseDirectory" wire:loading.attr="disabled" wire:target="browseDirectory" aria-label="Browse computer for a directory">
                     <span wire:loading.remove wire:target="browseDirectory">Browse…</span>
                     <span wire:loading wire:target="browseDirectory">Opening…</span>
@@ -62,7 +62,7 @@
             </div>
         </div>
         @error('directoryPath')<small id="inventory-directory-error" class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
-        <small>Choose a watched directory or enter any existing local folder path. Symbolic links are skipped.</small>
+        <small>Select a saved directory, paste a local folder path, or browse your computer. Symbolic links are skipped.</small>
     </form>
 
     @if ($statusMessage)

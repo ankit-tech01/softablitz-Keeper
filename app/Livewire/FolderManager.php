@@ -3,7 +3,6 @@
 namespace App\Livewire;
 
 use App\Models\AutomationRule;
-use App\Models\FileExecution;
 use App\Models\LedgerEntry;
 use App\Models\WatchedFolder;
 use App\Services\FileActionService;
@@ -15,12 +14,23 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Livewire\Component;
 use Native\Desktop\Dialog;
+use RuntimeException;
 
 class FolderManager extends Component
 {
     public string $folderPath = '';
 
     public ?string $message = null;
+
+    /** @var array<int, int> */
+    public array $newFilesByFolder = [];
+
+    public int $nextAutoPreviewAt;
+
+    public function mount(): void
+    {
+        $this->nextAutoPreviewAt = now()->addSeconds(30)->timestamp;
+    }
 
     public function browseFolder(FolderPathService $paths): void
     {
@@ -119,7 +129,94 @@ class FolderManager extends Component
             return;
         }
 
-        $stableFiles = $scanner->scan($folder);
+        try {
+            $plans = $this->buildPlans($folder, $scanner, $evaluator, $actions);
+        } catch (RuntimeException $exception) {
+            $this->addError('folderPath', $exception->getMessage());
+
+            return;
+        }
+
+        session()->put('keeper.preview', [
+            'folder_id' => $folder->id,
+            'sweep_id' => (string) Str::uuid(),
+            'plans' => $plans,
+            'automatic' => false,
+        ]);
+
+        $this->message = $plans === []
+            ? 'Nothing is settled yet. Run another scan after the files stop changing.'
+            : 'Preview ready. No files have been changed.';
+        $this->dispatch('keeper-preview-updated');
+    }
+
+    public function autoPreview(
+        FolderScanner $scanner,
+        RuleEvaluator $evaluator,
+        FileActionService $actions,
+    ): void {
+        $this->resetErrorBag();
+        $enabledFolders = WatchedFolder::query()->orderBy('id')->get();
+        $plans = [];
+        $previousSnapshots = session()->get('keeper.auto_preview.observation_hashes', []);
+        $nextSnapshots = [];
+        $newFilesByFolder = [];
+
+        foreach ($enabledFolders as $folder) {
+            if (! is_dir($folder->path)) {
+                $folder->update(['is_active' => false]);
+
+                continue;
+            }
+
+            try {
+                $plans = [
+                    ...$plans,
+                    ...$this->buildPlans($folder, $scanner, $evaluator, $actions),
+                ];
+                $currentHashes = $folder->observations()
+                    ->pluck('path_hash')
+                    ->all();
+                $previousHashes = $previousSnapshots[$folder->id] ?? null;
+
+                if (is_array($previousHashes)) {
+                    $newFilesByFolder[$folder->id] = count(array_diff($currentHashes, $previousHashes));
+                } else {
+                    $newFilesByFolder[$folder->id] = 0;
+                }
+
+                $nextSnapshots[$folder->id] = $currentHashes;
+            } catch (RuntimeException $exception) {
+                $this->addError('folderPath', $exception->getMessage());
+
+                return;
+            }
+        }
+
+        session()->put('keeper.auto_preview.observation_hashes', $nextSnapshots);
+        $this->newFilesByFolder = $newFilesByFolder;
+        $this->nextAutoPreviewAt = now()->addSeconds(30)->timestamp;
+        session()->put('keeper.preview', [
+            'folder_id' => null,
+            'sweep_id' => (string) Str::uuid(),
+            'plans' => $plans,
+            'automatic' => true,
+            'folder_count' => $enabledFolders->filter(fn (WatchedFolder $folder): bool => is_dir($folder->path))->count(),
+        ]);
+
+        $this->message = null;
+        $this->dispatch('keeper-preview-updated');
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildPlans(
+        WatchedFolder $folder,
+        FolderScanner $scanner,
+        RuleEvaluator $evaluator,
+        FileActionService $actions,
+    ): array {
         $enabledRules = AutomationRule::query()
             ->where('is_enabled', true)
             ->orderBy('priority')
@@ -127,7 +224,7 @@ class FolderManager extends Component
             ->get();
         $plans = [];
 
-        foreach ($stableFiles as $file) {
+        foreach ($scanner->scan($folder) as $file) {
             $rule = $evaluator->firstMatchFromRules(
                 $enabledRules,
                 $file['path'],
@@ -138,6 +235,7 @@ class FolderManager extends Component
             if ($rule === null) {
                 $plans[] = [
                     ...$file,
+                    'folder_id' => $folder->id,
                     'checksum' => null,
                     'rule_id' => null,
                     'rule_name' => null,
@@ -152,9 +250,7 @@ class FolderManager extends Component
             $checksum = hash_file('sha256', $file['path']);
 
             if ($checksum === false) {
-                $this->addError('folderPath', 'A settled file could not be read to verify its checksum.');
-
-                return;
+                throw new RuntimeException('A settled file could not be read to verify its checksum.');
             }
 
             $alreadyOrganized = LedgerEntry::query()
@@ -164,6 +260,7 @@ class FolderManager extends Component
                 ->exists();
             $plans[] = [
                 ...$file,
+                'folder_id' => $folder->id,
                 'checksum' => $checksum,
                 'rule_id' => $alreadyOrganized ? null : $rule->id,
                 'rule_name' => $alreadyOrganized ? 'Already handled' : $rule->name,
@@ -173,22 +270,15 @@ class FolderManager extends Component
             ];
         }
 
-        session()->put('keeper.preview', [
-            'folder_id' => $folder->id,
-            'sweep_id' => (string) Str::uuid(),
-            'plans' => $plans,
-        ]);
-
-        $this->message = $plans === []
-            ? 'Nothing is settled yet. Run another scan after the files stop changing.'
-            : 'Preview ready. No files have been changed.';
-        $this->dispatch('keeper-preview-updated');
+        return $plans;
     }
 
     public function render(): View
     {
         return view('livewire.folder-manager', [
             'folders' => WatchedFolder::query()->withCount('observations')->orderBy('created_at')->get(),
+            'nextAutoPreviewAt' => $this->nextAutoPreviewAt,
+            'newFilesByFolder' => $this->newFilesByFolder,
         ]);
     }
 }

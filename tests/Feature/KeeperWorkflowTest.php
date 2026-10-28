@@ -1,6 +1,11 @@
 <?php
 
 use App\Jobs\ExecuteFileAction;
+use App\Jobs\ScanDeviceInventory;
+use App\Livewire\ActivityManager;
+use App\Livewire\FolderManager;
+use App\Livewire\InventoryDashboard;
+use App\Livewire\RuleManager;
 use App\Models\AutomationRule;
 use App\Models\FileExecution;
 use App\Models\FileObservation;
@@ -14,18 +19,20 @@ use App\Services\FolderScanner;
 use App\Services\RuleEvaluator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Native\Desktop\Facades\Shell;
+use Tests\TestCase;
 
 test('a settled file is previewed, renamed once, and restored from the ledger', function () {
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-'.Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        $sourcePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
-        $destinationPath = $folderPath . DIRECTORY_SEPARATOR . 'report-archived.pdf';
+        $sourcePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
+        $destinationPath = $folderPath.DIRECTORY_SEPARATOR.'report-archived.pdf';
         File::put($sourcePath, 'a private test document');
 
         $this->post(route('folders.store'), ['folder_path' => $folderPath])->assertRedirect();
@@ -80,11 +87,13 @@ test('the watched-folder validator rejects the filesystem root', function () {
 });
 
 test('the Livewire folder form adds a watched folder without a redirect', function () {
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-livewire-folder-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-livewire-folder-'.Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        Livewire::test(\App\Livewire\FolderManager::class)
+        Livewire::test(FolderManager::class)
+            ->assertSee('Paste a folder path or browse your computer')
+            ->assertDontSee('readonly')
             ->set('folderPath', $folderPath)
             ->call('addFolder')
             ->assertHasNoErrors()
@@ -96,13 +105,32 @@ test('the Livewire folder form adds a watched folder without a redirect', functi
     }
 });
 
+test('the watched-folder form can browse for a folder', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-livewire-browse-folder-'.Str::uuid();
+    File::makeDirectory($folderPath);
+    Http::fake(['*dialog/open' => Http::response(['result' => [$folderPath]])]);
+    config(['nativephp-internal.running' => true]);
+
+    try {
+        Livewire::test(FolderManager::class)
+            ->call('browseFolder')
+            ->assertHasNoErrors()
+            ->assertSet('folderPath', realpath($folderPath));
+
+        Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/dialog/open')
+            && in_array('openDirectory', $request['properties'], true));
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
 test('the Livewire folder form validates its path as the user types', function () {
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-livewire-validation-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-livewire-validation-'.Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        Livewire::test(\App\Livewire\FolderManager::class)
-            ->set('folderPath', $folderPath . '-missing')
+        Livewire::test(FolderManager::class)
+            ->set('folderPath', $folderPath.'-missing')
             ->assertHasErrors(['folderPath'])
             ->set('folderPath', $folderPath)
             ->assertHasNoErrors(['folderPath']);
@@ -112,7 +140,7 @@ test('the Livewire folder form validates its path as the user types', function (
 });
 
 test('the Livewire rule form validates and creates a rule', function () {
-    Livewire::test(\App\Livewire\RuleManager::class)
+    Livewire::test(RuleManager::class)
         ->set('name', 'Archive invoices')
         ->set('conditions', [['field' => 'name', 'operator' => 'contains', 'value' => 'invoice']])
         ->set('action', 'trash')
@@ -125,8 +153,176 @@ test('the Livewire rule form validates and creates a rule', function () {
         ->action->toBe('trash');
 });
 
+test('the rule form stays open while editing and closes after saving', function () {
+    Livewire::test(RuleManager::class)
+        ->call('toggleBuilder')
+        ->assertSet('builderOpen', true)
+        ->set('name', 'Archive invoices')
+        ->assertSee('Save rule')
+        ->set('conditions', [['field' => 'name', 'operator' => 'contains', 'value' => 'invoice']])
+        ->set('action', 'trash')
+        ->call('saveRule')
+        ->assertHasNoErrors()
+        ->assertSet('builderOpen', false)
+        ->assertSee('Build a new rule');
+});
+
+test('rule target controls and guidance match the selected action', function () {
+    Livewire::test(RuleManager::class)
+        ->call('toggleBuilder')
+        ->assertSee('NEW FILE NAME')
+        ->assertSee('e.g. invoice-2026.pdf')
+        ->set('target', 'invoice-2026.pdf')
+        ->set('action', 'move')
+        ->assertSet('target', '')
+        ->assertSee('DESTINATION FOLDER FOR MOVED FILES')
+        ->assertSee('Paste a destination folder path or browse')
+        ->assertSee('Browse…')
+        ->set('action', 'copy')
+        ->assertSee('DESTINATION FOLDER FOR COPIES')
+        ->assertSee('a copy is created there')
+        ->set('action', 'trash')
+        ->assertSee('recoverable trash')
+        ->assertDontSee('Browse…')
+        ->set('action', 'script')
+        ->assertSee('COMMAND TO RUN')
+        ->assertSee('powershell -File');
+});
+
+test('move and copy rules accept a pasted destination folder path', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-pasted-rule-destination-'.Str::uuid();
+    File::makeDirectory($folderPath);
+
+    try {
+        foreach (['move', 'copy'] as $action) {
+            Livewire::test(RuleManager::class)
+                ->set('name', ucfirst($action).' pasted destination')
+                ->set('conditions', [['field' => 'name', 'operator' => 'contains', 'value' => 'invoice']])
+                ->set('action', $action)
+                ->set('target', $folderPath)
+                ->call('saveRule')
+                ->assertHasNoErrors()
+                ->assertSee('Rule saved');
+        }
+
+        expect(AutomationRule::query()->whereIn('action', ['move', 'copy'])->pluck('target')->all())
+            ->toBe([realpath($folderPath), realpath($folderPath)]);
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('watched folders are automatically previewed every 30 seconds with counts but no filenames', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-auto-preview-'.Str::uuid();
+    File::makeDirectory($folderPath);
+    File::put($folderPath.DIRECTORY_SEPARATOR.'private-arrival.pdf', 'private contents');
+    $folder = WatchedFolder::query()->create([
+        'name' => 'Automatic preview test',
+        'path' => realpath($folderPath),
+        'path_hash' => hash('sha256', realpath($folderPath)),
+        'is_active' => true,
+    ]);
+
+    try {
+        Livewire::test(FolderManager::class)
+            ->assertSee('wire:poll.30s="autoPreview"', false)
+            ->assertSee('data-auto-preview-countdown', false)
+            ->assertSee('data-folder-new-count="'.$folder->id.'"', false)
+            ->call('autoPreview')
+            ->call('autoPreview')
+            ->assertSet('newFilesByFolder', [$folder->id => 0])
+            ->assertDontSee('private-arrival.pdf')
+            ->call('autoPreview')
+            ->assertSet('newFilesByFolder', [$folder->id => 0]);
+
+        File::put($folderPath.DIRECTORY_SEPARATOR.'new-private-arrival.pdf', 'new private contents');
+
+        Livewire::test(FolderManager::class)
+            ->call('autoPreview')
+            ->assertSet('newFilesByFolder', [$folder->id => 1])
+            ->assertSee('+1 since previous scan')
+            ->assertDontSee('new-private-arrival.pdf');
+
+        expect(session('keeper.preview.automatic'))->toBeTrue();
+        expect(session('keeper.preview.plans'))->toHaveCount(1);
+        expect(session('keeper.preview.plans.0.folder_id'))->toBe($folder->id);
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('automatic preview shows new-file counts independently for each watched folder', function () {
+    $folderPaths = [
+        sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-auto-count-a-'.Str::uuid(),
+        sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-auto-count-b-'.Str::uuid(),
+    ];
+    $folders = [];
+
+    foreach ($folderPaths as $index => $folderPath) {
+        File::makeDirectory($folderPath);
+        File::put($folderPath.DIRECTORY_SEPARATOR.'existing-'.$index.'.txt', 'existing');
+        $folders[] = WatchedFolder::query()->create([
+            'name' => 'Automatic count '.($index + 1),
+            'path' => realpath($folderPath),
+            'path_hash' => hash('sha256', realpath($folderPath)),
+            'is_active' => true,
+        ]);
+    }
+
+    try {
+        $component = Livewire::test(FolderManager::class)
+            ->call('autoPreview')
+            ->call('autoPreview');
+
+        foreach (range(1, 2) as $number) {
+            File::put($folderPaths[0].DIRECTORY_SEPARATOR.'new-a-'.$number.'.txt', 'new');
+        }
+
+        foreach (range(1, 3) as $number) {
+            File::put($folderPaths[1].DIRECTORY_SEPARATOR.'new-b-'.$number.'.txt', 'new');
+        }
+
+        $component->call('autoPreview')
+            ->assertSet('newFilesByFolder', [
+                $folders[0]->id => 2,
+                $folders[1]->id => 3,
+            ])
+            ->assertSee('+2 since previous scan')
+            ->assertSee('+3 since previous scan')
+            ->assertDontSee('new-a-1.txt')
+            ->assertDontSee('new-b-1.txt');
+    } finally {
+        foreach ($folderPaths as $folderPath) {
+            File::deleteDirectory($folderPath);
+        }
+    }
+});
+
+test('move and copy rule destinations can be selected with the native folder picker', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-rule-destination-'.Str::uuid();
+    File::makeDirectory($folderPath);
+    Http::fake(['*dialog/open' => Http::response(['result' => [$folderPath]])]);
+    config(['nativephp-internal.running' => true]);
+
+    try {
+        foreach (['move', 'copy'] as $action) {
+            Livewire::test(RuleManager::class)
+                ->set('action', $action)
+                ->call('browseTarget')
+                ->assertHasNoErrors()
+                ->assertSet('target', realpath($folderPath));
+        }
+
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/dialog/open')
+            && in_array('openDirectory', $request['properties'], true));
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
 test('the Livewire rule form validates fields as the user types', function () {
-    Livewire::test(\App\Livewire\RuleManager::class)
+    Livewire::test(RuleManager::class)
         ->set('name', 'A')
         ->set('name', '')
         ->assertHasErrors(['name'])
@@ -140,9 +336,9 @@ test('the Livewire rule form validates fields as the user types', function () {
 });
 
 test('a concurrent observation insert is reconciled without failing the folder scan', function () {
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-scan-race-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-scan-race-'.Str::uuid();
     File::makeDirectory($folderPath);
-    $filePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
+    $filePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
     File::put($filePath, 'stable report');
     $realPath = realpath($filePath);
 
@@ -246,12 +442,12 @@ test('a rule can be deleted without removing its history and queued actions are 
 });
 
 test('a directory inventory scan records recursive file details and file type totals', function () {
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-' . Str::uuid();
-    File::makeDirectory($folderPath . DIRECTORY_SEPARATOR . 'nested', 0755, true);
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-'.Str::uuid();
+    File::makeDirectory($folderPath.DIRECTORY_SEPARATOR.'nested', 0755, true);
 
     try {
-        File::put($folderPath . DIRECTORY_SEPARATOR . 'report.pdf', 'pdf content');
-        File::put($folderPath . DIRECTORY_SEPARATOR . 'nested' . DIRECTORY_SEPARATOR . 'notes.txt', 'text content');
+        File::put($folderPath.DIRECTORY_SEPARATOR.'report.pdf', 'pdf content');
+        File::put($folderPath.DIRECTORY_SEPARATOR.'nested'.DIRECTORY_SEPARATOR.'notes.txt', 'text content');
         $scan = InventoryScan::query()->create(['roots' => [$folderPath], 'status' => 'queued']);
 
         app(DeviceInventoryScanner::class)->scan($scan, [$folderPath]);
@@ -261,7 +457,7 @@ test('a directory inventory scan records recursive file details and file type to
         expect($scan->fresh()->total_bytes)->toBe(strlen('pdf content') + strlen('text content'));
         expect($scan->files()->where('extension', 'pdf')->firstOrFail()->name)->toBe('report.pdf');
         expect($scan->files()->where('name', 'notes.txt')->firstOrFail()->path)
-            ->toBe(realpath($folderPath . DIRECTORY_SEPARATOR . 'nested' . DIRECTORY_SEPARATOR . 'notes.txt'));
+            ->toBe(realpath($folderPath.DIRECTORY_SEPARATOR.'nested'.DIRECTORY_SEPARATOR.'notes.txt'));
         expect(InventoryFile::query()->count())->toBe(2);
         $this->get(route('home', ['tab' => 'inventory']))
             ->assertOk()
@@ -275,9 +471,9 @@ test('a directory inventory scan records recursive file details and file type to
 });
 
 test('saved directory inventory can be deleted without deleting files on disk', function () {
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-delete-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-delete-'.Str::uuid();
     File::makeDirectory($folderPath);
-    $filePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
+    $filePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
     File::put($filePath, 'report contents');
     $scan = InventoryScan::query()->create([
         'roots' => [$folderPath],
@@ -295,7 +491,7 @@ test('saved directory inventory can be deleted without deleting files on disk', 
     ]);
 
     try {
-        Livewire::test(\App\Livewire\InventoryDashboard::class)
+        Livewire::test(InventoryDashboard::class)
             ->set('selectedDirectory', $folderPath)
             ->assertSee('Delete saved inventory for selected directory')
             ->call('deleteSelectedDirectory')
@@ -312,7 +508,7 @@ test('saved directory inventory can be deleted without deleting files on disk', 
 });
 
 test('the active inventory scan can be cancelled', function () {
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-cancel-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-cancel-'.Str::uuid();
     File::makeDirectory($folderPath);
     $scan = InventoryScan::query()->create([
         'roots' => [$folderPath],
@@ -322,7 +518,7 @@ test('the active inventory scan can be cancelled', function () {
     ]);
 
     try {
-        Livewire::test(\App\Livewire\InventoryDashboard::class)
+        Livewire::test(InventoryDashboard::class)
             ->set('selectedDirectory', $folderPath)
             ->call('cancelScan')
             ->assertHasNoErrors()
@@ -336,7 +532,7 @@ test('the active inventory scan can be cancelled', function () {
 });
 
 test('saved directory inventory cannot be deleted while its scan is running', function () {
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-active-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-active-'.Str::uuid();
     File::makeDirectory($folderPath);
     $scan = InventoryScan::query()->create([
         'roots' => [$folderPath],
@@ -344,7 +540,7 @@ test('saved directory inventory cannot be deleted while its scan is running', fu
     ]);
 
     try {
-        Livewire::test(\App\Livewire\InventoryDashboard::class)
+        Livewire::test(InventoryDashboard::class)
             ->set('selectedDirectory', $folderPath)
             ->call('deleteSelectedDirectory')
             ->assertSee('Wait for the directory scan to finish')
@@ -357,9 +553,9 @@ test('saved directory inventory cannot be deleted while its scan is running', fu
 });
 
 test('inventory file links open files with their default desktop application', function () {
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-open-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-open-'.Str::uuid();
     File::makeDirectory($folderPath);
-    $filePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
+    $filePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
     File::put($filePath, 'report contents');
     $scan = InventoryScan::query()->create([
         'roots' => [$folderPath],
@@ -379,7 +575,7 @@ test('inventory file links open files with their default desktop application', f
     config(['nativephp-internal.running' => true]);
 
     try {
-        Livewire::test(\App\Livewire\InventoryDashboard::class)
+        Livewire::test(InventoryDashboard::class)
             ->assertSee('Open report.pdf with its default app')
             ->call('openInventoryFile', $file->id)
             ->assertHasNoErrors();
@@ -414,7 +610,7 @@ test('completed file actions leave the processing queue but remain in the action
         'completed_at' => now(),
     ]);
 
-    Livewire::test(\App\Livewire\ActivityManager::class)
+    Livewire::test(ActivityManager::class)
         ->assertSee('Queue is clear.')
         ->assertSee('completed-report.pdf')
         ->assertSee('Completed')
@@ -424,12 +620,12 @@ test('completed file actions leave the processing queue but remain in the action
 
 test('emptying Keeper trash removes nested files and keeps the trash folder', function () {
     $trashPath = storage_path('app/private/keeper-trash');
-    File::makeDirectory($trashPath . DIRECTORY_SEPARATOR . 'nested', 0755, true);
-    File::put($trashPath . DIRECTORY_SEPARATOR . 'top-level.txt', 'top level');
-    File::put($trashPath . DIRECTORY_SEPARATOR . 'nested' . DIRECTORY_SEPARATOR . 'nested.txt', 'nested');
+    File::makeDirectory($trashPath.DIRECTORY_SEPARATOR.'nested', 0755, true);
+    File::put($trashPath.DIRECTORY_SEPARATOR.'top-level.txt', 'top level');
+    File::put($trashPath.DIRECTORY_SEPARATOR.'nested'.DIRECTORY_SEPARATOR.'nested.txt', 'nested');
 
     try {
-        Livewire::test(\App\Livewire\ActivityManager::class)
+        Livewire::test(ActivityManager::class)
             ->call('emptyTrash')
             ->assertHasNoErrors()
             ->assertSee('2 file(s) permanently removed from Keeper trash.');
@@ -441,12 +637,207 @@ test('emptying Keeper trash removes nested files and keeps the trash folder', fu
     }
 });
 
+test('empty Keeper trash removes files recorded by completed trash actions and keeps their history', function () {
+    $trashPath = storage_path('app/private/keeper-trash');
+    File::makeDirectory($trashPath, 0755, true);
+    $trashedFile = $trashPath.DIRECTORY_SEPARATOR.'completed-report.pdf';
+    File::put($trashedFile, 'trashed report');
+    $entry = LedgerEntry::query()->create([
+        'entry_uuid' => Str::uuid()->toString(),
+        'action' => 'trash',
+        'source_path' => sys_get_temp_dir().DIRECTORY_SEPARATOR.'report.pdf',
+        'destination_path' => $trashedFile,
+        'checksum' => hash('sha256', 'trashed report'),
+        'result_checksum' => hash('sha256', 'trashed report'),
+        'status' => 'completed',
+        'completed_at' => now(),
+    ]);
+
+    try {
+        Livewire::test(ActivityManager::class)
+            ->call('emptyTrash')
+            ->assertHasNoErrors()
+            ->assertSee('1 file(s) permanently removed from Keeper trash.');
+
+        expect(is_file($trashedFile))->toBeFalse();
+        expect($entry->fresh())->not->toBeNull();
+        expect($entry->fresh()->status)->toBe('completed');
+    } finally {
+        File::deleteDirectory($trashPath);
+    }
+});
+
+test('Keeper trash lists completed trash actions and can permanently delete one file', function () {
+    $trashPath = storage_path('app/private/keeper-trash');
+    File::makeDirectory($trashPath, 0755, true);
+    $trashedFile = $trashPath.DIRECTORY_SEPARATOR.'delete-one.pdf';
+    File::put($trashedFile, 'trash contents');
+    $entry = LedgerEntry::query()->create([
+        'entry_uuid' => Str::uuid()->toString(),
+        'action' => 'trash',
+        'source_path' => sys_get_temp_dir().DIRECTORY_SEPARATOR.'delete-one.pdf',
+        'destination_path' => $trashedFile,
+        'checksum' => hash('sha256', 'trash contents'),
+        'result_checksum' => hash('sha256', 'trash contents'),
+        'status' => 'completed',
+        'completed_at' => now(),
+    ]);
+
+    try {
+        Livewire::test(ActivityManager::class)
+            ->assertSee('08 / KEEPER TRASH')
+            ->assertSee('delete-one.pdf')
+            ->assertSee('Undo')
+            ->call('deleteTrashFile', realpath($trashedFile))
+            ->assertHasNoErrors()
+            ->assertSee('File permanently deleted from Keeper trash.')
+            ->assertDontSee('Delete permanently');
+
+        expect(is_file($trashedFile))->toBeFalse();
+        expect($entry->fresh())->not->toBeNull();
+        expect($entry->fresh()->undone_at)->toBeNull();
+    } finally {
+        File::deleteDirectory($trashPath);
+    }
+});
+
+test('action ledger shows ten recent entries and paginates all history ten entries at a time', function () {
+    $entries = collect(range(1, 12))->map(function (int $number): LedgerEntry {
+        return LedgerEntry::query()->create([
+            'entry_uuid' => Str::uuid()->toString(),
+            'action' => 'rename',
+            'source_path' => sys_get_temp_dir().DIRECTORY_SEPARATOR.sprintf('ledger-file-%02d.txt', $number),
+            'destination_path' => sys_get_temp_dir().DIRECTORY_SEPARATOR.sprintf('ledger-file-%02d-renamed.txt', $number),
+            'checksum' => hash('sha256', "ledger contents {$number}"),
+            'result_checksum' => hash('sha256', "ledger contents {$number}"),
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
+    });
+
+    $activity = Livewire::test(ActivityManager::class)
+        ->assertSee('10 recent entries')
+        ->assertSee('ledger-file-12.txt')
+        ->assertDontSee('ledger-file-02.txt')
+        ->call('toggleAllEntries')
+        ->assertSet('showAllEntries', true)
+        ->assertSee('12 total entries')
+        ->assertSee('Show recent actions')
+        ->assertDontSee('ledger-file-02.txt')
+        ->assertSee('Next');
+
+    $activity->call('gotoPage', 2)
+        ->assertSee('ledger-file-02.txt')
+        ->assertSee('ledger-file-01.txt')
+        ->assertDontSee('ledger-file-12.txt');
+
+    $activity->call('toggleAllEntries')
+        ->assertSet('showAllEntries', false)
+        ->assertSee('ledger-file-12.txt');
+});
+
+test('workspace sidebar links to queue diagnostics and Keeper trash in page order', function () {
+    $response = $this->get(route('home'));
+
+    $response->assertOk()
+        ->assertSee('07</span> Queue diagnostics', false)
+        ->assertSee('08</span> Keeper trash', false)
+        ->assertSee(route('home', ['tab' => 'queue']).'#queue-diagnostics', false)
+        ->assertSee(route('home', ['tab' => 'trash']).'#keeper-trash', false);
+
+    $html = $response->getContent();
+
+    expect(strpos($html, 'id="queue-diagnostics"'))
+        ->toBeLessThan(strpos($html, 'id="keeper-trash"'));
+});
+
+test('a trash file can be opened in its default app from the Keeper trash section', function () {
+    $trashPath = storage_path('app/private/keeper-trash');
+    File::makeDirectory($trashPath, 0755, true);
+    $trashedFile = $trashPath.DIRECTORY_SEPARATOR.'open-from-trash.pdf';
+    File::put($trashedFile, 'trash contents');
+    LedgerEntry::query()->create([
+        'entry_uuid' => Str::uuid()->toString(),
+        'action' => 'trash',
+        'source_path' => sys_get_temp_dir().DIRECTORY_SEPARATOR.'open-from-trash.pdf',
+        'destination_path' => $trashedFile,
+        'checksum' => hash('sha256', 'trash contents'),
+        'result_checksum' => hash('sha256', 'trash contents'),
+        'status' => 'completed',
+        'completed_at' => now(),
+    ]);
+    $shell = Shell::fake();
+    config(['nativephp-internal.running' => true]);
+
+    try {
+        Livewire::test(ActivityManager::class)
+            ->assertSee('Open open-from-trash.pdf with its default app')
+            ->call('openTrashFile', realpath($trashedFile))
+            ->assertHasNoErrors();
+
+        $shell->assertOpenedFile(realpath($trashedFile));
+    } finally {
+        File::deleteDirectory($trashPath);
+    }
+});
+
+test('individual Keeper trash deletion cannot remove a file outside the trash folder', function () {
+    $outsidePath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-trash-protected-'.Str::uuid().'.txt';
+    File::put($outsidePath, 'keep this file');
+
+    try {
+        Livewire::test(ActivityManager::class)
+            ->call('deleteTrashFile', $outsidePath)
+            ->assertSee('This file is not available in Keeper trash.')
+            ->assertSee('07 / QUEUE DIAGNOSTICS');
+
+        expect(is_file($outsidePath))->toBeTrue();
+    } finally {
+        File::delete($outsidePath);
+    }
+});
+
+test('Keeper trash undo restores a trashed file to its original location', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-trash-undo-'.Str::uuid();
+    $trashPath = storage_path('app/private/keeper-trash');
+    File::makeDirectory($folderPath, 0755, true);
+    File::makeDirectory($trashPath, 0755, true);
+    $sourcePath = $folderPath.DIRECTORY_SEPARATOR.'restore-me.pdf';
+    $trashedFile = $trashPath.DIRECTORY_SEPARATOR.'restore-me.pdf';
+    File::put($trashedFile, 'restore contents');
+    $entry = LedgerEntry::query()->create([
+        'entry_uuid' => Str::uuid()->toString(),
+        'action' => 'trash',
+        'source_path' => $sourcePath,
+        'destination_path' => $trashedFile,
+        'checksum' => hash('sha256', 'restore contents'),
+        'result_checksum' => hash('sha256', 'restore contents'),
+        'status' => 'completed',
+        'completed_at' => now(),
+    ]);
+
+    try {
+        Livewire::test(ActivityManager::class)
+            ->call('undoTrashFile', $entry->id)
+            ->assertHasNoErrors()
+            ->assertSee('File restored from Keeper trash.')
+            ->assertSee('0 files');
+
+        expect(is_file($sourcePath))->toBeTrue();
+        expect(is_file($trashedFile))->toBeFalse();
+        expect($entry->fresh()->undone_at)->not->toBeNull();
+    } finally {
+        File::deleteDirectory($folderPath);
+        File::deleteDirectory($trashPath);
+    }
+});
+
 test('empty Keeper trash reports already empty when no files remain', function () {
     $trashPath = storage_path('app/private/keeper-trash');
     File::makeDirectory($trashPath, 0755, true);
 
     try {
-        Livewire::test(\App\Livewire\ActivityManager::class)
+        Livewire::test(ActivityManager::class)
             ->call('emptyTrash')
             ->assertHasNoErrors()
             ->assertSee('Keeper trash is already empty.');
@@ -457,11 +848,11 @@ test('empty Keeper trash reports already empty when no files remain', function (
 
 test('file actions are dispatched to the default queue used by the local worker', function () {
     Queue::fake();
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-dispatch-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-dispatch-'.Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        $path = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
+        $path = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
         File::put($path, 'queued report');
         $folder = WatchedFolder::query()->create([
             'name' => 'Dispatch test',
@@ -495,7 +886,7 @@ test('file actions are dispatched to the default queue used by the local worker'
             Str::uuid()->toString(),
         );
 
-        Queue::assertPushed(ExecuteFileAction::class, fn(ExecuteFileAction $job): bool => $job->queue === null);
+        Queue::assertPushed(ExecuteFileAction::class, fn (ExecuteFileAction $job): bool => $job->queue === null);
     } finally {
         File::deleteDirectory($folderPath);
     }
@@ -503,11 +894,13 @@ test('file actions are dispatched to the default queue used by the local worker'
 
 test('the inventory section can queue an on-demand directory scan', function () {
     Queue::fake();
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-inventory-queue-' . Str::uuid();
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-queue-'.Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        \Livewire\Livewire::test(\App\Livewire\InventoryDashboard::class)
+        Livewire::test(InventoryDashboard::class)
+            ->assertSee('Paste a folder path or browse for a directory')
+            ->assertDontSee('readonly')
             ->set('directoryPath', $folderPath)
             ->call('startScan')
             ->assertHasNoErrors()
@@ -516,7 +909,27 @@ test('the inventory section can queue an on-demand directory scan', function () 
         $scan = InventoryScan::query()->firstOrFail();
         expect($scan->status)->toBe('queued');
         expect($scan->roots)->toBe([realpath($folderPath)]);
-        Queue::assertPushed(\App\Jobs\ScanDeviceInventory::class);
+        Queue::assertPushed(ScanDeviceInventory::class);
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
+test('the inventory form can browse for a directory', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-inventory-browse-'.Str::uuid();
+    File::makeDirectory($folderPath);
+    Http::fake(['*dialog/open' => Http::response(['result' => [$folderPath]])]);
+    config(['nativephp-internal.running' => true]);
+
+    try {
+        Livewire::test(InventoryDashboard::class)
+            ->call('browseDirectory')
+            ->assertHasNoErrors()
+            ->assertSet('directoryPath', realpath($folderPath))
+            ->assertSet('selectedDirectory', realpath($folderPath));
+
+        Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/dialog/open')
+            && in_array('openDirectory', $request['properties'], true));
     } finally {
         File::deleteDirectory($folderPath);
     }
@@ -547,12 +960,12 @@ test('the first matching enabled rule wins', function () {
 });
 
 test('preview skips checksum hashing for files that match no enabled rule', function () {
-    /** @var \Tests\TestCase $this */
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-unmatched-' . Str::uuid();
+    /** @var TestCase $this */
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-unmatched-'.Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        File::put($folderPath . DIRECTORY_SEPARATOR . 'installer.exe', 'unmatched file');
+        File::put($folderPath.DIRECTORY_SEPARATOR.'installer.exe', 'unmatched file');
         $this->post(route('folders.store'), ['folder_path' => $folderPath])->assertRedirect();
         $this->post(route('rules.store'), [
             'name' => 'Separate PDF files',
@@ -607,13 +1020,13 @@ test('nested AND OR and NOT groups are evaluated recursively', function () {
 });
 
 test('a changed file is not moved by a stale preview even when its timestamp is unchanged', function () {
-    /** @var \Tests\TestCase $this */
-    $folderPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'keeper-' . Str::uuid();
+    /** @var TestCase $this */
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-'.Str::uuid();
     File::makeDirectory($folderPath);
 
     try {
-        $sourcePath = $folderPath . DIRECTORY_SEPARATOR . 'report.pdf';
-        $destinationPath = $folderPath . DIRECTORY_SEPARATOR . 'report-archived.pdf';
+        $sourcePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
+        $destinationPath = $folderPath.DIRECTORY_SEPARATOR.'report-archived.pdf';
         File::put($sourcePath, 'first');
 
         $this->post(route('folders.store'), ['folder_path' => $folderPath]);

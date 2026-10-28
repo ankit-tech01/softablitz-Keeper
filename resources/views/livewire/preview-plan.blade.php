@@ -4,7 +4,13 @@
         @if (!empty($preview['plans']))<span class="count-pill">{{ count($preview['plans']) }} settled</span>@endif
     </div>
     @if ($message)<div class="inventory-status" role="status">{{ $message }}</div>@endif
+    @if (!empty($preview['automatic']))
+        <div class="inventory-status" role="status">
+            Automatic preview found {{ count($preview['plans'] ?? []) }} settled file(s) across {{ $preview['folder_count'] ?? 0 }} watched folder(s). File names are hidden; no files change until you confirm.
+        </div>
+    @endif
     @if (!empty($preview['plans']))
+        @if (empty($preview['automatic']))
         <div class="table-scroll">
             <table><thead><tr><th>FILE</th><th>FIRST MATCH</th><th>ACTION</th><th>DESTINATION</th></tr></thead><tbody>
                 @foreach ($preview['plans'] as $plan)
@@ -17,6 +23,7 @@
                 @endforeach
             </tbody></table>
         </div>
+        @endif
         @if (collect($preview['plans'])->contains(fn ($plan) => $plan['rule_id'] !== null))
             <form wire:submit="confirmPlan" class="confirm-row">
                 <input type="hidden" wire:model="confirmation" value="1">
@@ -30,6 +37,8 @@
         @else
             <div class="limit-note">No files matched an enabled rule. Add or enable a rule to create a useful plan.</div>
         @endif
+    @elseif (!empty($preview['automatic']))
+        <div class="empty-state"><div class="empty-mark">◷</div><strong>No settled files found</strong><p>The automatic preview will check the watched folders again in 30 seconds.</p></div>
     @else
         <div class="empty-state"><div class="empty-mark">◷</div><strong>No preview plan yet</strong><p>Scan a watched folder twice so Keeper can confirm its files have settled.</p></div>
     @endif

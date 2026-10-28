@@ -1,4 +1,4 @@
-<section class="panel" id="folders">
+<section class="panel" id="folders" @if ($folders->isNotEmpty()) wire:poll.30s="autoPreview" @endif>
     <div class="panel-heading">
         <div>
             <div class="eyebrow">01 / WATCH & SETTLE</div>
@@ -7,6 +7,12 @@
         </div>
         <span class="count-pill">{{ $folders->count() }} of 3</span>
     </div>
+
+    @if ($folders->isNotEmpty())
+        <div class="folder-scan-summary" role="status">
+            <span data-auto-preview-countdown data-next-preview-at="{{ $nextAutoPreviewAt }}">Next automatic preview in 30 seconds</span>
+        </div>
+    @endif
 
     @if ($message)
         <div class="inventory-status" role="status">{{ $message }}</div>
@@ -19,7 +25,10 @@
             <div class="folder-details">
                 <div class="folder-title">{{ $folder->name }} <span class="folder-state {{ $folder->is_active ? 'state-active' : 'state-paused' }}"><i></i>{{ $folder->is_active ? 'WATCHING' : 'DRIVE OFFLINE' }}</span></div>
                 <div class="folder-path mono">{{ $folder->path }}</div>
-                <div class="folder-meta">{{ $folder->observations_count }} observed file(s) <span>·</span> {{ $folder->last_scanned_at?->diffForHumans() ?? 'Not scanned yet' }}</div>
+                <div class="folder-meta">
+                    {{ $folder->observations_count }} observed file(s) <span>·</span> {{ $folder->last_scanned_at?->diffForHumans() ?? 'Not scanned yet' }}
+                    <span class="folder-new-count" data-folder-new-count="{{ $folder->id }}">+{{ $newFilesByFolder[$folder->id] ?? 0 }} since previous scan</span>
+                </div>
             </div>
             <div class="folder-actions">
                 <button class="button button-soft" type="button" wire:click="previewFolder({{ $folder->id }})" wire:loading.attr="disabled" wire:target="previewFolder({{ $folder->id }})">
@@ -37,7 +46,7 @@
         <form class="add-folder-form" wire:submit="addFolder">
             <label for="folder_path">ADD A LOCAL FOLDER</label>
             <div class="form-row">
-                <input id="folder_path" wire:model="folderPath" type="text" placeholder="Choose a folder from your computer" readonly required @error('folderPath') aria-invalid="true" aria-describedby="folder-path-error" @enderror>
+                <input id="folder_path" wire:model.blur="folderPath" type="text" placeholder="Paste a folder path or browse your computer" required @error('folderPath') aria-invalid="true" aria-describedby="folder-path-error" @enderror>
                 <button class="button button-soft" type="button" wire:click="browseFolder" wire:loading.attr="disabled" wire:target="browseFolder" aria-label="Browse computer for a folder">
                     <span wire:loading.remove wire:target="browseFolder">Browse…</span>
                     <span wire:loading wire:target="browseFolder">Opening…</span>
@@ -47,7 +56,7 @@
                     <span wire:loading wire:target="addFolder">Adding…</span><span>→</span>
                 </button>
             </div>
-            <small>Browse to choose a folder on this device. System and root folders are blocked.</small>
+            <small>Paste a local folder path or browse to choose one. System and root folders are blocked.</small>
             @error('folderPath')<small id="folder-path-error" class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
         </form>
     @else

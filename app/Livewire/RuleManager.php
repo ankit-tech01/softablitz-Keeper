@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
+use Native\Desktop\Dialog;
 
 class RuleManager extends Component
 {
@@ -27,6 +28,13 @@ class RuleManager extends Component
     public string $schedule = '';
 
     public ?string $message = null;
+
+    public bool $builderOpen = false;
+
+    public function toggleBuilder(): void
+    {
+        $this->builderOpen = ! $this->builderOpen;
+    }
 
     public function updatedName(string $name): void
     {
@@ -47,8 +55,43 @@ class RuleManager extends Component
         $this->validateOnly('action', [
             'action' => ['required', Rule::in(['rename', 'move', 'copy', 'trash', 'script'])],
         ]);
+        $this->target = '';
         $this->resetErrorBag('target');
-        $this->validateTarget(app(FolderPathService::class));
+    }
+
+    public function browseTarget(FolderPathService $paths): void
+    {
+        if (! in_array($this->action, ['move', 'copy'], true)) {
+            $this->addError('target', 'Choose Move or Copy before browsing for a destination folder.');
+
+            return;
+        }
+
+        if (! config('nativephp-internal.running')) {
+            $this->addError('target', 'Folder browsing is available in the Sanctum Keeper desktop app.');
+
+            return;
+        }
+
+        $homeDirectory = getenv('USERPROFILE') ?: getenv('HOME') ?: base_path();
+        $selectedPath = Dialog::new()
+            ->title($this->action === 'move' ? 'Choose a folder to move files into' : 'Choose a folder to copy files into')
+            ->defaultPath(is_dir($this->target) ? $this->target : $homeDirectory)
+            ->button('Choose destination')
+            ->folders()
+            ->open();
+
+        if (! is_string($selectedPath) || $selectedPath === '') {
+            return;
+        }
+
+        $this->resetErrorBag('target');
+
+        try {
+            $this->target = $paths->resolveWatchedFolder($selectedPath, 'target');
+        } catch (ValidationException $exception) {
+            $this->addError('target', $exception->validator->errors()->first('target'));
+        }
     }
 
     public function updatedTarget(string $target): void
@@ -121,6 +164,7 @@ class RuleManager extends Component
         $this->reset('name', 'conditions', 'logic', 'action', 'target', 'schedule');
         $this->conditions = [['field' => 'name', 'operator' => 'contains', 'value' => '']];
         $this->message = 'Rule saved. Rules run from top to bottom; only the first matching rule acts.';
+        $this->builderOpen = false;
         $this->dispatch('keeper-rules-updated');
     }
 

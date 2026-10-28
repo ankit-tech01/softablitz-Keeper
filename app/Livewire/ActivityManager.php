@@ -8,18 +8,31 @@ use App\Models\LedgerEntry;
 use App\Services\FileActionService;
 use App\Services\KeeperTrashService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Livewire\WithPagination;
+use Native\Desktop\Facades\Shell;
 use RuntimeException;
 
 class ActivityManager extends Component
 {
+    use WithPagination;
+
     public ?string $message = null;
 
     public bool $messageIsError = false;
 
+    public bool $showAllEntries = false;
+
     #[On('keeper-activity-updated')]
     public function refreshActivity(): void {}
+
+    public function toggleAllEntries(): void
+    {
+        $this->showAllEntries = ! $this->showAllEntries;
+        $this->resetPage();
+    }
 
     public function undoEntry(int $entryId, FileActionService $actions): void
     {
@@ -32,6 +45,79 @@ class ActivityManager extends Component
         }
 
         $this->message = 'Action undone. The original checksum was verified.';
+        $this->messageIsError = false;
+    }
+
+    public function undoTrashFile(int $entryId, FileActionService $actions, KeeperTrashService $trash): void
+    {
+        $entry = LedgerEntry::query()
+            ->whereKey($entryId)
+            ->where('action', 'trash')
+            ->where('status', 'completed')
+            ->whereNull('undone_at')
+            ->firstOrFail();
+        $fileIsAvailable = collect($trash->files())
+            ->contains(fn (array $file): bool => $file['ledger_entry_id'] === $entry->id);
+
+        if (! $fileIsAvailable) {
+            $this->setError('This file is no longer available in Keeper trash.');
+
+            return;
+        }
+
+        try {
+            $actions->undo($entry);
+        } catch (RuntimeException $exception) {
+            $this->setError($exception->getMessage());
+
+            return;
+        }
+
+        $this->message = 'File restored from Keeper trash.';
+        $this->messageIsError = false;
+    }
+
+    public function deleteTrashFile(string $path, KeeperTrashService $trash): void
+    {
+        try {
+            $trash->deleteFile($path);
+        } catch (RuntimeException $exception) {
+            $this->setError($exception->getMessage());
+
+            return;
+        }
+
+        $this->message = 'File permanently deleted from Keeper trash.';
+        $this->messageIsError = false;
+    }
+
+    public function openTrashFile(string $path, KeeperTrashService $trash): void
+    {
+        $file = collect($trash->files())->first(
+            fn (array $file): bool => $file['path'] === $path,
+        );
+
+        if ($file === null) {
+            $this->setError('This file is no longer available in Keeper trash.');
+
+            return;
+        }
+
+        if (! config('nativephp-internal.running')) {
+            $this->setError('Open this file in the Sanctum Keeper desktop app to launch it.');
+
+            return;
+        }
+
+        $error = Shell::openFile($file['path']);
+
+        if ($error !== '') {
+            $this->setError("The file could not be opened: {$error}");
+
+            return;
+        }
+
+        $this->message = null;
         $this->messageIsError = false;
     }
 
@@ -99,16 +185,28 @@ class ActivityManager extends Component
         $this->messageIsError = true;
     }
 
-    public function render(): View
+    public function render(KeeperTrashService $trash): View
     {
         $executions = FileExecution::query()
             ->whereIn('status', ['queued', 'processing', 'failed'])
             ->latest()
             ->limit(8)
             ->get();
+        $trashFiles = $trash->files();
+        $entriesQuery = LedgerEntry::query()->with('rule')->latest()->orderByDesc('id');
+        $entries = $this->showAllEntries
+            ? $entriesQuery->paginate(10)
+            : $entriesQuery->limit(10)->get();
+        $entryRows = $entries instanceof LengthAwarePaginator
+            ? $entries->getCollection()
+            : $entries;
 
         return view('livewire.activity-manager', [
-            'entries' => LedgerEntry::query()->latest()->limit(12)->get(),
+            'entries' => $entries,
+            'entryRows' => $entryRows,
+            'entryCount' => LedgerEntry::query()->count(),
+            'trashFiles' => $trashFiles,
+            'trashEntryIds' => array_values(array_filter(array_column($trashFiles, 'ledger_entry_id'))),
             'executions' => $executions,
             'hasQueuedExecutions' => $executions->contains(fn (FileExecution $execution): bool => in_array($execution->status, ['queued', 'processing'], true)),
         ]);

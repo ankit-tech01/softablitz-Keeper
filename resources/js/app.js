@@ -135,37 +135,22 @@ document.addEventListener('change', (event) => {
     operatorSelect.dispatchEvent(new Event('change', { bubbles: true }));
 });
 
-function updateActionFields(actionSelect) {
-    const form = actionSelect.closest('#rule-builder-form');
-    const targetInput = form.querySelector('[data-rule-target]');
-    const targetLabel = form.querySelector('[data-target-label]');
-    const targetHelp = form.querySelector('[data-target-help]');
-    const scriptWarning = form.querySelector('[data-script-warning]');
-    const action = actionSelect.value;
-    const labels = {
-        rename: ['NEW FILE NAME', 'Use a name only; the file stays in its current folder.'],
-        move: ['DESTINATION FOLDER', 'Enter an existing local folder. Files are never overwritten.'],
-        copy: ['DESTINATION FOLDER', 'Enter an existing local folder. The original file remains in place.'],
-        trash: ['DESTINATION', 'Files are moved to Keeper’s recoverable holding folder.'],
-        script: ['COMMAND TO RUN', 'The matched file path is supplied in the KEEPER_FILE environment variable.'],
-    };
+updateConditionIndexes();
 
-    targetLabel.textContent = labels[action][0];
-    targetHelp.textContent = labels[action][1];
-    targetInput.placeholder = action === 'rename' ? 'invoice-2026.pdf' : action === 'script' ? 'your trusted command' : 'C:\\Users\\you\\Documents';
-    targetInput.required = action !== 'trash';
-    targetInput.hidden = action === 'trash';
-    targetHelp.hidden = action === 'trash';
-    scriptWarning.hidden = action !== 'script';
+function updateAutoPreviewCountdowns() {
+    document.querySelectorAll('[data-auto-preview-countdown]').forEach((element) => {
+        const deadline = Number(element.dataset.nextPreviewAt);
+
+        if (!Number.isFinite(deadline)) {
+            return;
+        }
+
+        const remaining = Math.max(0, Math.ceil((deadline * 1000 - Date.now()) / 1000));
+        element.textContent = remaining === 0
+            ? 'Automatic preview is running…'
+            : `Next automatic preview in ${remaining} second${remaining === 1 ? '' : 's'}`;
+    });
 }
 
-document.addEventListener('change', (event) => {
-    const actionSelect = event.target.closest('[data-rule-action]');
-
-    if (actionSelect) {
-        updateActionFields(actionSelect);
-    }
-});
-
-document.querySelectorAll('[data-rule-action]').forEach(updateActionFields);
-updateConditionIndexes();
+updateAutoPreviewCountdowns();
+window.setInterval(updateAutoPreviewCountdowns, 1000);

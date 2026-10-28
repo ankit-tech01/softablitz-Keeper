@@ -34,6 +34,10 @@
                 <a class="{{ $tab === 'inventory' ? 'active' : '' }}"
                     href="{{ route('home', ['tab' => 'inventory']) }}" wire:navigate
                     data-navigate-noscroll><span>06</span> File inventory</a>
+                <a class="{{ $tab === 'queue' ? 'active' : '' }}"
+                    href="{{ route('home', ['tab' => 'queue']) }}#queue-diagnostics" wire:navigate><span>07</span> Queue diagnostics</a>
+                <a class="{{ $tab === 'trash' ? 'active' : '' }}"
+                    href="{{ route('home', ['tab' => 'trash']) }}#keeper-trash" wire:navigate><span>08</span> Keeper trash</a>
             </nav>
 
             <div class="sidebar-bottom">

@@ -30,17 +30,29 @@ class PreviewPlan extends Component
         $sweepId = $preview['sweep_id'] ?? null;
         $plans = $preview['plans'] ?? [];
 
-        if ((! is_int($folderId) && ! (is_string($folderId) && ctype_digit($folderId)))
-            || ! is_string($sweepId)
+        if (! is_string($sweepId)
             || ! is_array($plans)) {
             $this->addError('confirmation', 'The preview session is invalid. Run a fresh scan before confirming.');
 
             return;
         }
 
-        $folder = WatchedFolder::query()->whereKey($folderId)->first();
+        $fallbackFolderId = is_int($folderId) || (is_string($folderId) && ctype_digit($folderId))
+            ? (int) $folderId
+            : null;
+        $folderIds = collect($plans)
+            ->map(fn (mixed $plan): mixed => is_array($plan) ? ($plan['folder_id'] ?? $fallbackFolderId) : null)
+            ->filter(fn (mixed $id): bool => is_int($id) || (is_string($id) && ctype_digit($id)))
+            ->map(fn (int|string $id): int => (int) $id)
+            ->unique()
+            ->all();
+        $folders = WatchedFolder::query()
+            ->whereIn('id', $folderIds)
+            ->where('is_active', true)
+            ->get()
+            ->keyBy('id');
 
-        if ($folder === null || ! $folder->is_active) {
+        if ($folders->isEmpty()) {
             $this->addError('confirmation', 'The watched folder is no longer available.');
 
             return;
@@ -54,6 +66,15 @@ class PreviewPlan extends Component
                 || ! is_int($plan['modified_at'] ?? null)
                 || ! is_string($plan['checksum'] ?? null)
                 || ! is_int($plan['rule_id'] ?? null)) {
+                continue;
+            }
+
+            $planFolderId = $plan['folder_id'] ?? $fallbackFolderId;
+            $folder = (is_int($planFolderId) || (is_string($planFolderId) && ctype_digit($planFolderId)))
+                ? $folders->get((int) $planFolderId)
+                : null;
+
+            if ($folder === null) {
                 continue;
             }
 

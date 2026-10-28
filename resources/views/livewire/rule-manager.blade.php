@@ -43,8 +43,11 @@
         <div class="empty-state"><div class="empty-mark">⌘</div><strong>Your first rule is waiting</strong><p>Build a rule and preview its plan before it touches a file.</p></div>
     @endforelse
 
-    <details class="rule-builder">
-        <summary><span>＋</span> Build a new rule</summary>
+    <div class="rule-builder">
+        <button class="rule-builder-toggle" type="button" wire:click="toggleBuilder" aria-expanded="{{ $builderOpen ? 'true' : 'false' }}">
+            <span>＋</span> {{ $builderOpen ? 'Hide rule form' : 'Build a new rule' }}
+        </button>
+        @if ($builderOpen)
         <form wire:submit="saveRule" class="builder-form" id="rule-builder-form">
             <label class="field-label" for="rule_name">RULE NAME</label>
             <input id="rule_name" wire:model.live.debounce.500ms="name" type="text" placeholder="e.g. Tidy invoices" maxlength="120" required @error('name') aria-invalid="true" aria-describedby="rule-name-error" @enderror>
@@ -69,19 +72,39 @@
             <select id="rule_logic" wire:model.live="logic" @error('logic') aria-invalid="true" @enderror><option value="and">Match all (AND)</option><option value="or">Match any (OR)</option><option value="not">Match none (NOT)</option></select>
             @error('logic')<small class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
             <label class="field-label" for="rule_action">THEN DO THIS</label>
-            <select id="rule_action" wire:model.live="action" data-rule-action @error('action') aria-invalid="true" @enderror><option value="rename">Rename</option><option value="move">Move to folder</option><option value="copy">Copy to folder</option><option value="trash">Move to Keeper trash</option><option value="script">Run custom command</option></select>
+            <select id="rule_action" wire:model.live="action" @error('action') aria-invalid="true" @enderror><option value="rename">Rename</option><option value="move">Move to folder</option><option value="copy">Copy to folder</option><option value="trash">Move to Keeper trash</option><option value="script">Run custom command</option></select>
             @error('action')<small class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
-            <label class="field-label" for="rule_target" data-target-label>NEW NAME OR DESTINATION FOLDER</label>
-            <input id="rule_target" wire:model.live.debounce.500ms="target" type="text" placeholder="invoice-2026.pdf" data-rule-target @error('target') aria-invalid="true" aria-describedby="rule-target-error" @enderror>
-            @error('target')<small id="rule-target-error" class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
-            <small class="field-help" data-target-help>For move and copy, use an existing destination folder path. Rename keeps the file in its current folder.</small>
+            @if ($action === 'rename')
+                <label class="field-label" for="rule_target">NEW FILE NAME</label>
+                <input id="rule_target" wire:model.live.debounce.500ms="target" type="text" placeholder="e.g. invoice-2026.pdf" required @error('target') aria-invalid="true" aria-describedby="rule-target-error" @enderror>
+                <small class="field-help">Enter a file name only, including its extension. The file stays in its current folder.</small>
+            @elseif (in_array($action, ['move', 'copy'], true))
+                <label class="field-label" for="rule_target">{{ $action === 'move' ? 'DESTINATION FOLDER FOR MOVED FILES' : 'DESTINATION FOLDER FOR COPIES' }}</label>
+                <div class="rule-target-picker">
+                    <input id="rule_target" wire:model.blur="target" type="text" placeholder="Paste a destination folder path or browse" required @error('target') aria-invalid="true" aria-describedby="rule-target-error" @enderror>
+                    <button class="button button-soft" type="button" wire:click="browseTarget" wire:loading.attr="disabled" wire:target="browseTarget" aria-label="Browse for destination folder">
+                        <span wire:loading.remove wire:target="browseTarget">Browse…</span>
+                        <span wire:loading wire:target="browseTarget">Opening…</span>
+                    </button>
+                </div>
+                @error('target')<small id="rule-target-error" class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
+                <small class="field-help">{{ $action === 'move' ? 'Paste a path or choose an existing folder. The file will be moved there and will no longer remain in its original location.' : 'Paste a path or choose an existing folder. The original file stays in place and a copy is created there.' }} Files are never overwritten.</small>
+            @elseif ($action === 'script')
+                <label class="field-label" for="rule_target">COMMAND TO RUN</label>
+                <input id="rule_target" wire:model.live.debounce.500ms="target" type="text" placeholder="e.g. powershell -File .\\process-file.ps1" required @error('target') aria-invalid="true" aria-describedby="rule-target-error" @enderror>
+                @error('target')<small id="rule-target-error" class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
+                <small class="field-help">The matched file path is supplied in the KEEPER_FILE environment variable.</small>
+                <div class="script-warning">Custom commands run locally without an operating-system sandbox, have a 10-second timeout and cannot be undone. Only use commands you trust. The source path is available as <code>KEEPER_FILE</code>.</div>
+            @else
+                <div class="field-help">Files are moved to Keeper’s recoverable trash. No destination is needed.</div>
+            @endif
             <label class="field-label" for="rule_schedule">RUN WHEN</label>
             <select id="rule_schedule" wire:model.live="schedule" @error('schedule') aria-invalid="true" @enderror><option value="">When a settled file arrives</option><option value="hourly">Hourly sweep</option><option value="daily">Daily sweep</option></select>
             @error('schedule')<small class="inventory-form-error" role="alert">{{ $message }}</small>@enderror
-            <div class="script-warning" data-script-warning hidden>Custom commands run locally without an operating-system sandbox, have a 10-second timeout and cannot be undone. Only use commands you trust. The source path is available as <code>KEEPER_FILE</code>.</div>
             <button class="button button-dark builder-submit" type="submit" wire:loading.attr="disabled" wire:target="saveRule">
                 <span wire:loading.remove wire:target="saveRule">Save rule</span><span wire:loading wire:target="saveRule">Saving…</span><span>→</span>
             </button>
         </form>
-    </details>
+        @endif
+    </div>
 </section>
