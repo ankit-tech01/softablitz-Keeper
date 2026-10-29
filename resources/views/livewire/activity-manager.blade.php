@@ -50,7 +50,17 @@
     </section>
 
     <section class="panel queue-panel" id="queue-diagnostics">
-        <div class="panel-heading"><div><div class="eyebrow">07 / QUEUE DIAGNOSTICS</div><h2>Processing queue</h2><p>Completed actions stay in the action ledger above. Duplicate scans are deduplicated by file path and modification time.</p></div><span class="count-pill">{{ $executions->count() }} open jobs</span></div>
+        <div class="panel-heading">
+            <div><div class="eyebrow">07 / QUEUE DIAGNOSTICS</div><h2>Processing queue</h2><p>Completed actions stay in the action ledger above. Duplicate scans are deduplicated by file path and modification time.</p></div>
+            <div class="panel-heading-actions">
+                <span class="count-pill">{{ $executions->count() }} open jobs</span>
+                @if ($failedExecutionCount > 0)
+                    <button class="text-button text-danger" type="button" wire:click="removeAllFailedExecutions" wire:confirm="Remove all {{ $failedExecutionCount }} failed actions from the queue? Their action history will be kept." wire:loading.attr="disabled" wire:target="removeAllFailedExecutions">
+                        <span wire:loading.remove wire:target="removeAllFailedExecutions">Remove all failed ({{ $failedExecutionCount }})</span><span wire:loading wire:target="removeAllFailedExecutions">Removing…</span>
+                    </button>
+                @endif
+            </div>
+        </div>
         <div class="table-scroll"><table><thead><tr><th>FILE</th><th>STATUS</th><th>ATTEMPTS</th><th>DETAILS</th><th></th></tr></thead><tbody>
             @forelse ($executions as $execution)
                 <tr wire:key="file-execution-{{ $execution->id }}">
@@ -61,6 +71,9 @@
                         @if ($execution->status === 'failed')
                             <button class="text-button" type="button" wire:click="retryExecution({{ $execution->id }})" wire:loading.attr="disabled" wire:target="retryExecution({{ $execution->id }})">
                                 <span wire:loading.remove wire:target="retryExecution({{ $execution->id }})">Retry</span><span wire:loading wire:target="retryExecution({{ $execution->id }})">Retrying…</span>
+                            </button>
+                            <button class="text-button text-danger" type="button" wire:click="removeFailedExecution({{ $execution->id }})" wire:confirm="Remove this failed action from the queue? Its action history will be kept." wire:loading.attr="disabled" wire:target="removeFailedExecution({{ $execution->id }})">
+                                <span wire:loading.remove wire:target="removeFailedExecution({{ $execution->id }})">Remove</span><span wire:loading wire:target="removeFailedExecution({{ $execution->id }})">Removing…</span>
                             </button>
                         @endif
                     </td>

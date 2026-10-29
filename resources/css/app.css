@@ -1773,6 +1773,122 @@ td strong {
     padding-left: 17px;
 }
 
+.timeout-page {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: 24px;
+    background: #f6f7f4;
+}
+
+.timeout-card {
+    width: min(100%, 560px);
+    padding: 30px;
+    border: 1px solid #e8eae5;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 2px 7px rgb(28 37 28 / 2%);
+}
+
+.timeout-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+}
+
+.timeout-brand .brand-mark {
+    flex: 0 0 auto;
+}
+
+.timeout-brand strong,
+.timeout-brand small {
+    display: block;
+}
+
+.timeout-brand strong {
+    font-size: 19px;
+    letter-spacing: -.6px;
+}
+
+.timeout-brand small {
+    margin-top: 2px;
+    color: #9a9e97;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+}
+
+.timeout-divider {
+    height: 1px;
+    margin: 24px 0;
+    background: #f0f1ee;
+}
+
+.timeout-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #858b82;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+}
+
+.timeout-title {
+    margin: 10px 0 8px;
+    font-family: 'Gabriela', serif;
+    font-size: clamp(26px, 5vw, 34px);
+    font-weight: 400;
+    letter-spacing: -1px;
+    line-height: 1.25;
+}
+
+.timeout-message {
+    margin-bottom: 22px;
+    color: #858a82;
+    font-size: 14px;
+    line-height: 1.65;
+}
+
+.timeout-next-steps {
+    padding: 16px;
+    border: 1px solid #e8eae5;
+    border-radius: 10px;
+    background: #fbfcfa;
+}
+
+.timeout-next-steps h2 {
+    margin: 0 0 8px;
+    font-family: 'Gabriela', serif;
+    font-size: 17px;
+    font-weight: 400;
+}
+
+.timeout-next-steps ul {
+    margin: 0;
+    padding-left: 19px;
+    color: #626b61;
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.timeout-next-steps li + li {
+    margin-top: 4px;
+}
+
+.timeout-next-steps li::marker {
+    color: #548364;
+}
+
+.timeout-button {
+    margin-top: 18px;
+}
+
+.timeout-button:focus-visible {
+    outline: 3px solid #83a88a;
+    outline-offset: 3px;
+}
+
 .page-footer {
     display: flex;
     align-items: center;

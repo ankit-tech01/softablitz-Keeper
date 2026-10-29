@@ -8,6 +8,7 @@ use App\Models\LedgerEntry;
 use App\Services\FileActionService;
 use App\Services\KeeperTrashService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -186,6 +187,52 @@ class ActivityManager extends Component
         $this->messageIsError = false;
     }
 
+    public function removeFailedExecution(int $executionId): void
+    {
+        $removed = DB::transaction(function () use ($executionId): bool {
+            $execution = FileExecution::query()
+                ->whereKey($executionId)
+                ->where('status', 'failed')
+                ->lockForUpdate()
+                ->first();
+
+            return $execution?->delete() ?? false;
+        });
+
+        if (! $removed) {
+            $this->setError('This action is no longer failed or has already been removed.');
+
+            return;
+        }
+
+        $this->message = 'Failed action removed from the queue. Any action history was kept.';
+        $this->messageIsError = false;
+    }
+
+    public function removeAllFailedExecutions(): void
+    {
+        $removedCount = DB::transaction(function (): int {
+            $failedIds = FileExecution::query()
+                ->where('status', 'failed')
+                ->lockForUpdate()
+                ->pluck('id');
+
+            if ($failedIds->isEmpty()) {
+                return 0;
+            }
+
+            return FileExecution::query()
+                ->whereIn('id', $failedIds)
+                ->where('status', 'failed')
+                ->delete();
+        });
+
+        $this->message = $removedCount === 0
+            ? 'There are no failed actions to remove.'
+            : "{$removedCount} failed action(s) removed from the queue. Any action history was kept.";
+        $this->messageIsError = false;
+    }
+
     private function setError(string $message): void
     {
         $this->message = $message;
@@ -199,6 +246,7 @@ class ActivityManager extends Component
             ->latest()
             ->limit(8)
             ->get();
+        $failedExecutionCount = FileExecution::query()->where('status', 'failed')->count();
         $trashFiles = $trash->files();
         $entriesQuery = LedgerEntry::query()->with('rule')->latest()->orderByDesc('id');
         $entries = $this->showAllEntries
@@ -215,6 +263,7 @@ class ActivityManager extends Component
             'trashFiles' => $trashFiles,
             'trashEntryIds' => array_values(array_filter(array_column($trashFiles, 'ledger_entry_id'))),
             'executions' => $executions,
+            'failedExecutionCount' => $failedExecutionCount,
             'hasQueuedExecutions' => $executions->contains(fn (FileExecution $execution): bool => in_array($execution->status, ['queued', 'processing'], true)),
         ]);
     }

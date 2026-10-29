@@ -26,10 +26,37 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Native\Desktop\Facades\Shell;
+use Symfony\Component\ErrorHandler\Error\FatalError;
 use Tests\TestCase;
+
+test('execution timeouts show a friendly error instead of a debug screen', function () {
+    Route::get('/test/timeout', static function () {
+        $message = 'Maximum execution time of 30 seconds exceeded';
+
+        throw new FatalError($message, 0, [
+            'type' => E_ERROR,
+            'message' => $message,
+            'file' => __FILE__,
+            'line' => __LINE__,
+        ]);
+    });
+
+    $this->get('/test/timeout')
+        ->assertStatus(500)
+        ->assertSee('This task took longer than expected')
+        ->assertSee('Try the task again with a smaller folder or fewer files.')
+        ->assertDontSee('Maximum execution time')
+        ->assertDontSee('Stack trace');
+
+    $this->getJson('/test/timeout')
+        ->assertStatus(500)
+        ->assertJsonPath('message', 'This task exceeded the time limit and was interrupted.')
+        ->assertJsonPath('next_steps.0', 'Try the task again with a smaller folder or fewer files.');
+});
 
 test('a settled file is previewed, renamed once, and restored from the ledger', function () {
     $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-'.Str::uuid();
@@ -845,6 +872,68 @@ test('completed file actions leave the processing queue but remain in the action
         ->assertSee('Completed')
         ->assertDontSee('file-execution-'.$execution->id)
         ->assertSee('ledger-entry-'.$entry->id);
+});
+
+test('a failed action can be removed from the queue without deleting its ledger history', function () {
+    $execution = FileExecution::query()->create([
+        'unique_key' => hash('sha256', 'failed-action-remove'),
+        'file_path' => 'C:\\Users\\test\\Documents\\failed-report.pdf',
+        'modified_at' => 1,
+        'checksum' => hash('sha256', 'failed report'),
+        'status' => 'failed',
+        'attempts' => 5,
+        'last_error' => 'Destination unavailable.',
+    ]);
+    $entry = LedgerEntry::query()->create([
+        'entry_uuid' => Str::uuid()->toString(),
+        'file_execution_id' => $execution->id,
+        'action' => 'move',
+        'source_path' => $execution->file_path,
+        'checksum' => $execution->checksum,
+        'status' => 'failed',
+    ]);
+
+    Livewire::test(ActivityManager::class)
+        ->assertSee('Remove all failed (1)')
+        ->call('removeFailedExecution', $execution->id)
+        ->assertSee('Failed action removed from the queue.')
+        ->assertDontSee('file-execution-'.$execution->id);
+
+    expect(FileExecution::query()->whereKey($execution->id)->exists())->toBeFalse();
+    expect($entry->fresh())->not->toBeNull();
+    expect($entry->fresh()->file_execution_id)->toBeNull();
+});
+
+test('all failed actions can be removed without clearing active or completed queue history', function () {
+    $failed = FileExecution::query()->create([
+        'unique_key' => hash('sha256', 'bulk-failed-action'),
+        'file_path' => 'C:\\Users\\test\\Documents\\failed-report.pdf',
+        'modified_at' => 1,
+        'checksum' => hash('sha256', 'failed report'),
+        'status' => 'failed',
+    ]);
+    $queued = FileExecution::query()->create([
+        'unique_key' => hash('sha256', 'bulk-queued-action'),
+        'file_path' => 'C:\\Users\\test\\Documents\\queued-report.pdf',
+        'modified_at' => 1,
+        'checksum' => hash('sha256', 'queued report'),
+        'status' => 'queued',
+    ]);
+    $processing = FileExecution::query()->create([
+        'unique_key' => hash('sha256', 'bulk-processing-action'),
+        'file_path' => 'C:\\Users\\test\\Documents\\processing-report.pdf',
+        'modified_at' => 1,
+        'checksum' => hash('sha256', 'processing report'),
+        'status' => 'processing',
+    ]);
+
+    Livewire::test(ActivityManager::class)
+        ->call('removeAllFailedExecutions')
+        ->assertSee('1 failed action(s) removed from the queue.');
+
+    expect(FileExecution::query()->whereKey($failed->id)->exists())->toBeFalse();
+    expect(FileExecution::query()->whereKey($queued->id)->exists())->toBeTrue();
+    expect(FileExecution::query()->whereKey($processing->id)->exists())->toBeTrue();
 });
 
 test('emptying Keeper trash removes nested files and keeps the trash folder', function () {
