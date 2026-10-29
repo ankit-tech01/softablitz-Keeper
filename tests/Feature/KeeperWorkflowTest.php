@@ -58,6 +58,50 @@ test('execution timeouts show a friendly error instead of a debug screen', funct
         ->assertJsonPath('next_steps.0', 'Try the task again with a smaller folder or fewer files.');
 });
 
+test('folder previews handle files disappearing after the scan', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-disappearing-file-'.Str::uuid();
+    File::makeDirectory($folderPath);
+
+    try {
+        $filePath = $folderPath.DIRECTORY_SEPARATOR.'report.pdf';
+        File::put($filePath, 'a private test document');
+
+        $this->post(route('folders.store'), ['folder_path' => $folderPath])->assertRedirect();
+        $folder = WatchedFolder::query()->firstOrFail();
+        AutomationRule::query()->create([
+            'name' => 'Archive reports',
+            'conditions' => [['field' => 'name', 'operator' => 'contains', 'value' => 'report']],
+            'logic' => 'and',
+            'action' => 'trash',
+            'priority' => 0,
+            'is_enabled' => true,
+            'is_approved' => false,
+        ]);
+
+        $scanner = Mockery::mock(FolderScanner::class);
+        $scanner->shouldReceive('scan')
+            ->twice()
+            ->andReturn([[
+                'path' => $filePath,
+                'size' => 23,
+                'modified_at' => 1,
+            ]]);
+        app()->instance(FolderScanner::class, $scanner);
+        File::delete($filePath);
+
+        Livewire::test(FolderManager::class)
+            ->call('previewFolder', $folder->id)
+            ->assertHasErrors('folderPath')
+            ->assertSee('A settled file could not be read to verify its checksum.');
+
+        $this->post(route('folders.preview', $folder))
+            ->assertRedirect()
+            ->assertSessionHasErrors('preview');
+    } finally {
+        File::deleteDirectory($folderPath);
+    }
+});
+
 test('a settled file is previewed, renamed once, and restored from the ledger', function () {
     $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-'.Str::uuid();
     File::makeDirectory($folderPath);
@@ -1006,6 +1050,8 @@ test('Keeper trash lists completed trash actions and can permanently delete one 
             ->assertSee('08 / KEEPER TRASH')
             ->assertSee('delete-one.pdf')
             ->assertSee('Undo')
+            ->assertSee('Copy full file path')
+            ->assertDontSee('TRASHED FILE LOCATION')
             ->call('deleteTrashFile', realpath($trashedFile))
             ->assertHasNoErrors()
             ->assertSee('File permanently deleted from Keeper trash.')
@@ -1015,6 +1061,51 @@ test('Keeper trash lists completed trash actions and can permanently delete one 
         expect($entry->fresh())->not->toBeNull();
         expect($entry->fresh()->undone_at)->toBeNull();
     } finally {
+        File::deleteDirectory($trashPath);
+    }
+});
+
+test('Keeper trash can undo all recoverable files', function () {
+    $folderPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'keeper-trash-undo-all-'.Str::uuid();
+    $trashPath = storage_path('app/private/keeper-trash');
+    File::makeDirectory($folderPath, 0755, true);
+    File::makeDirectory($trashPath, 0755, true);
+    $entries = collect(['first.pdf', 'second.pdf'])->map(function (string $name) use ($folderPath, $trashPath): LedgerEntry {
+        $sourcePath = $folderPath.DIRECTORY_SEPARATOR.$name;
+        $trashedPath = $trashPath.DIRECTORY_SEPARATOR.$name;
+        $contents = "contents of {$name}";
+        File::put($trashedPath, $contents);
+
+        return LedgerEntry::query()->create([
+            'entry_uuid' => Str::uuid()->toString(),
+            'action' => 'trash',
+            'source_path' => $sourcePath,
+            'destination_path' => $trashedPath,
+            'checksum' => hash('sha256', $contents),
+            'result_checksum' => hash('sha256', $contents),
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
+    });
+
+    try {
+        Livewire::test(ActivityManager::class)
+            ->assertSee('Undo all (2)')
+            ->call('undoAllTrashFiles')
+            ->assertHasNoErrors()
+            ->assertSee('2 file(s) restored from Keeper trash.')
+            ->assertSee('0 files');
+
+        foreach (['first.pdf', 'second.pdf'] as $name) {
+            expect(is_file($folderPath.DIRECTORY_SEPARATOR.$name))->toBeTrue();
+            expect(is_file($trashPath.DIRECTORY_SEPARATOR.$name))->toBeFalse();
+        }
+
+        foreach ($entries as $entry) {
+            expect($entry->fresh()->undone_at)->not->toBeNull();
+        }
+    } finally {
+        File::deleteDirectory($folderPath);
         File::deleteDirectory($trashPath);
     }
 });

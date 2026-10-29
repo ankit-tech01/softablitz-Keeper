@@ -85,6 +85,42 @@ class ActivityManager extends Component
         $this->messageIsError = false;
     }
 
+    public function undoAllTrashFiles(FileActionService $actions, KeeperTrashService $trash): void
+    {
+        $entryIds = collect($trash->files())
+            ->pluck('ledger_entry_id')
+            ->filter()
+            ->all();
+        $entries = LedgerEntry::query()
+            ->whereIn('id', $entryIds)
+            ->orderByDesc('id')
+            ->get();
+
+        if ($entries->isEmpty()) {
+            $this->message = 'There are no recoverable files with undo records.';
+            $this->messageIsError = false;
+
+            return;
+        }
+
+        $restored = 0;
+        $errors = [];
+
+        foreach ($entries as $entry) {
+            try {
+                $actions->undo($entry);
+                $restored++;
+            } catch (RuntimeException $exception) {
+                $errors[] = $exception->getMessage();
+            }
+        }
+
+        $this->message = $errors === []
+            ? "{$restored} file(s) restored from Keeper trash."
+            : "{$restored} file(s) restored; ".implode(' ', array_unique($errors));
+        $this->messageIsError = $errors !== [];
+    }
+
     public function deleteTrashFile(string $path, KeeperTrashService $trash): void
     {
         try {
@@ -262,6 +298,7 @@ class ActivityManager extends Component
             'entryCount' => LedgerEntry::query()->count(),
             'trashFiles' => $trashFiles,
             'trashEntryIds' => array_values(array_filter(array_column($trashFiles, 'ledger_entry_id'))),
+            'recoverableTrashCount' => count(array_filter(array_column($trashFiles, 'ledger_entry_id'))),
             'executions' => $executions,
             'failedExecutionCount' => $failedExecutionCount,
             'hasQueuedExecutions' => $executions->contains(fn (FileExecution $execution): bool => in_array($execution->status, ['queued', 'processing'], true)),

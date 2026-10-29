@@ -78,6 +78,13 @@ class FileActionService
         return $this->destination($rule, $source);
     }
 
+    public function checksum(string $path): ?string
+    {
+        $checksum = @hash_file('sha256', $path);
+
+        return $checksum === false ? null : $checksum;
+    }
+
     public function undo(LedgerEntry $entry): void
     {
         if ($entry->status !== 'completed' || $entry->undone_at !== null || $entry->action === 'script') {

@@ -257,9 +257,9 @@ class FolderManager extends Component
                 continue;
             }
 
-            $checksum = hash_file('sha256', $file['path']);
+            $checksum = $actions->checksum($file['path']);
 
-            if ($checksum === false) {
+            if ($checksum === null) {
                 throw new RuntimeException('A settled file could not be read to verify its checksum.');
             }
 

@@ -221,3 +221,40 @@ function updateAutoPreviewCountdowns() {
 
 updateAutoPreviewCountdowns();
 window.setInterval(updateAutoPreviewCountdowns, 1000);
+
+document.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-copy-path]');
+
+    if (!button) {
+        return;
+    }
+
+    const originalTitle = 'Copy full file path';
+
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(button.dataset.copyPath);
+        } else {
+            const input = document.createElement('textarea');
+            input.value = button.dataset.copyPath;
+            input.setAttribute('readonly', '');
+            input.style.position = 'fixed';
+            input.style.opacity = '0';
+            document.body.append(input);
+            input.select();
+            const copied = document.execCommand('copy');
+            input.remove();
+
+            if (!copied) {
+                throw new Error('Clipboard copy was denied.');
+            }
+        }
+
+        button.title = 'Path copied to clipboard';
+        window.setTimeout(() => {
+            button.title = originalTitle;
+        }, 1800);
+    } catch {
+        button.title = 'Could not copy path. Check clipboard permissions.';
+    }
+});

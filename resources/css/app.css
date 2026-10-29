@@ -523,6 +523,11 @@ p {
     display: grid;
     align-content: start;
     gap: 16px;
+    min-width: 0;
+}
+
+.side-column {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .panel {
@@ -1543,9 +1548,70 @@ textarea::placeholder {
     margin-top: 16px;
 }
 
-.trash-file-path {
-    max-width: 380px;
-    overflow-wrap: anywhere;
+.trash-panel .table-scroll table {
+    min-width: 620px;
+    table-layout: fixed;
+}
+
+.trash-panel th:nth-child(1),
+.trash-panel td:nth-child(1) {
+    width: 58%;
+}
+
+.trash-panel th:nth-child(2),
+.trash-panel td:nth-child(2) {
+    width: 14%;
+}
+
+.trash-panel th:nth-child(3),
+.trash-panel td:nth-child(3) {
+    width: 28%;
+}
+
+.trash-panel td:nth-child(1) {
+    overflow: hidden;
+}
+
+.trash-file-name {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+
+.trash-file-name .inventory-file-link {
+    display: block;
+    flex: 1 1 auto;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trash-copy-path {
+    flex: 0 0 auto;
+    padding: 2px 5px;
+    border: 1px solid #e8eae5;
+    border-radius: 5px;
+    background: #fafbf9;
+    color: #667263;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    line-height: 1.4;
+    cursor: copy;
+}
+
+.trash-copy-path:hover {
+    border-color: #cbd9c9;
+    background: #edf3ec;
+    color: #315d42;
+}
+
+.trash-copy-path:focus-visible {
+    border-radius: 3px;
+    outline: 2px solid #83a88a;
+    outline-offset: 2px;
 }
 
 .trash-file-actions {
@@ -1986,7 +2052,7 @@ td strong {
     }
 
     .content-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .side-column {
@@ -2073,7 +2139,7 @@ td strong {
     }
 
     .side-column {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .preview-card {

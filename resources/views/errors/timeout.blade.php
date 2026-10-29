@@ -6,76 +6,112 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f6f7f4">
     <title>Task took too long — Sanctum Keeper</title>
+    @vite(['resources/css/app.css'])
     <style>
-        :root {
-            color-scheme: light;
-            font-family: "Segoe UI", Arial, sans-serif;
-            color: #22251f;
-            background: #f6f7f4;
-        }
-
-        body {
-            box-sizing: border-box;
+        .timeout-shell {
             display: grid;
             min-height: 100vh;
-            margin: 0;
             padding: 24px;
             place-items: center;
         }
 
-        main {
-            box-sizing: border-box;
-            width: min(100%, 560px);
-            padding: 36px;
-            border: 1px solid #e5e8e2;
-            border-radius: 16px;
+        .timeout-card {
+            width: min(100%, 580px);
+            padding: clamp(24px, 6vw, 40px);
+            border: 1px solid #e8eae5;
+            border-radius: 12px;
             background: #fff;
-            box-shadow: 0 16px 48px rgb(34 37 31 / 7%);
+            box-shadow: 0 2px 7px rgb(28 37 28 / 2%);
         }
 
-        .eyebrow {
-            color: #718071;
-            font-size: 11px;
+        .timeout-brand {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            margin-bottom: 30px;
+        }
+
+        .timeout-brand-mark {
+            display: grid;
+            width: 38px;
+            height: 38px;
+            place-items: center;
+            border-radius: 12px;
+            background: #234d3d;
+            color: #edf4e6;
+            font-size: 22px;
             font-weight: 700;
-            letter-spacing: .12em;
         }
 
-        h1 {
-            margin: 12px 0;
-            font-size: clamp(24px, 5vw, 32px);
+        .timeout-brand-name {
+            font-size: 19px;
+            font-weight: 700;
+            letter-spacing: -.6px;
         }
 
-        p,
-        li {
-            color: #62685f;
+        .timeout-brand-tagline {
+            display: block;
+            margin-top: 2px;
+            color: #9a9e97;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+        }
+
+        .timeout-eyebrow {
+            margin-bottom: 8px;
+            color: #858b82;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+        }
+
+        .timeout-card h1 {
+            margin: 0 0 12px;
+            font-family: 'Gabriela', serif;
+            font-size: clamp(25px, 5vw, 34px);
+            font-weight: 400;
+            letter-spacing: -1px;
+            line-height: 1.2;
+        }
+
+        .timeout-card p,
+        .timeout-card li {
+            color: #858a82;
             line-height: 1.65;
         }
 
-        ul {
-            padding-left: 22px;
-        }
-
-        a {
-            display: inline-block;
-            margin-top: 12px;
-            padding: 11px 16px;
-            border-radius: 8px;
-            background: #315d46;
-            color: #fff;
+        .timeout-card h2 {
+            margin: 24px 0 8px;
+            font-size: 13px;
             font-weight: 700;
-            text-decoration: none;
         }
 
-        a:focus-visible {
+        .timeout-card ul {
+            display: grid;
+            gap: 6px;
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .timeout-return {
+            margin-top: 22px;
+        }
+
+        .timeout-return:focus-visible {
             outline: 3px solid #91b79d;
             outline-offset: 3px;
         }
     </style>
 </head>
 
-<body>
-    <main>
-        <div class="eyebrow">SANCTUM KEEPER</div>
+<body class="timeout-shell">
+    <main class="timeout-card">
+        <div class="timeout-brand">
+            <span class="timeout-brand-mark">K</span>
+            <span><span class="timeout-brand-name">keeper</span><small class="timeout-brand-tagline">THE SANCTUM DESKTOP</small></span>
+        </div>
+        <div class="timeout-eyebrow">TASK STATUS</div>
         <h1>This task took longer than expected</h1>
         <p>{{ $message }} If the task may have started changing files, check its status before retrying.</p>
         <h2>What you can do</h2>
@@ -84,7 +120,7 @@
                 <li>{{ $step }}</li>
             @endforeach
         </ul>
-        <a href="{{ route('home') }}">Return to Keeper</a>
+        <a class="button button-dark timeout-return" href="{{ route('home') }}">Return to Keeper <span aria-hidden="true">→</span></a>
     </main>
 </body>
 

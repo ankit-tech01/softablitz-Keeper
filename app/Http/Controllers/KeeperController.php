@@ -277,9 +277,9 @@ class KeeperController extends Controller
                 continue;
             }
 
-            $checksum = hash_file('sha256', $file['path']);
+            $checksum = $actions->checksum($file['path']);
 
-            if ($checksum === false) {
+            if ($checksum === null) {
                 return to_route('home', ['tab' => 'preview'])->withErrors(['preview' => 'A settled file could not be read to verify its checksum.']);
             }
 

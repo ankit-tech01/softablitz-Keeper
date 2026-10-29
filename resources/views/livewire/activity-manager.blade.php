@@ -90,6 +90,11 @@
             <div><div class="eyebrow">08 / KEEPER TRASH</div><h2>Recoverable deleted files</h2><p>Restore a file to its original location or permanently delete it. Your action history stays in the ledger.</p></div>
             <div class="panel-heading-actions">
                 <span class="count-pill">{{ count($trashFiles) }} files</span>
+                @if ($recoverableTrashCount > 0)
+                    <button class="text-button" type="button" wire:click="undoAllTrashFiles" wire:confirm="Restore all {{ $recoverableTrashCount }} recoverable files to their original locations?" wire:loading.attr="disabled" wire:target="undoAllTrashFiles">
+                        <span wire:loading.remove wire:target="undoAllTrashFiles">Undo all ({{ $recoverableTrashCount }})</span><span wire:loading wire:target="undoAllTrashFiles">Restoring…</span>
+                    </button>
+                @endif
                 @if ($trashFiles !== [])
                     <button class="text-button text-danger" type="button" wire:click="emptyTrash" wire:confirm="Permanently delete all {{ count($trashFiles) }} files in Keeper trash? This cannot be undone." wire:loading.attr="disabled" wire:target="emptyTrash">
                         <span wire:loading.remove wire:target="emptyTrash">Empty Keeper trash</span><span wire:loading wire:target="emptyTrash">Emptying…</span>
@@ -98,14 +103,16 @@
             </div>
         </div>
         <div class="table-scroll">
-            <table><thead><tr><th>FILE</th><th>SIZE</th><th>TRASHED FILE LOCATION</th><th></th></tr></thead><tbody>
+            <table><thead><tr><th>FILE</th><th>SIZE</th><th></th></tr></thead><tbody>
                 @forelse ($trashFiles as $file)
                     <tr wire:key="keeper-trash-{{ sha1($file['path']) }}">
                         <td>
-                            <button class="inventory-file-link" type="button" wire:click="openTrashFile(@js($file['path']))" wire:loading.attr="disabled" wire:target="openTrashFile" aria-label="Open {{ $file['name'] }} with its default app" title="Open with default app">{{ $file['name'] }}</button>
+                            <div class="trash-file-name">
+                                <button class="inventory-file-link" type="button" wire:click="openTrashFile(@js($file['path']))" wire:loading.attr="disabled" wire:target="openTrashFile" aria-label="Open {{ $file['name'] }} with its default app" title="Open with default app">{{ $file['name'] }}</button>
+                                <button class="trash-copy-path" type="button" data-copy-path="{{ $file['path'] }}" title="Copy full file path" aria-label="Copy full path for {{ $file['name'] }}">Copy path</button>
+                            </div>
                         </td>
                         <td>{{ \App\Support\ByteFormatter::format($file['size']) }}</td>
-                        <td class="mono trash-file-path">{{ $file['path'] }}</td>
                         <td class="trash-file-actions">
                             @if ($file['ledger_entry_id'])
                                 <button class="text-button" type="button" wire:click="undoTrashFile({{ $file['ledger_entry_id'] }})" wire:confirm="Restore {{ $file['name'] }} to its original location?" wire:loading.attr="disabled" wire:target="undoTrashFile({{ $file['ledger_entry_id'] }})">
@@ -120,7 +127,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="4"><div class="mini-empty">Keeper trash is empty. Files moved to trash by a rule will appear here.</div></td></tr>
+                    <tr><td colspan="3"><div class="mini-empty">Keeper trash is empty. Files moved to trash by a rule will appear here.</div></td></tr>
                 @endforelse
             </tbody></table>
         </div>
