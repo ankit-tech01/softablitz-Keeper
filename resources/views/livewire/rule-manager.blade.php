@@ -22,7 +22,7 @@
                         @if (($condition['type'] ?? null) === 'group')
                             <span>{{ strtoupper($condition['operator']) }} group ({{ count($condition['conditions']) }})</span>
                         @else
-                            <span>{{ ucfirst($condition['field'] ?? 'file') }} {{ str_replace('_', ' ', $condition['operator'] ?? '') }} {{ $condition['value'] ?? '' }}{{ ($condition['field'] ?? '') === 'size' ? ' bytes' : '' }}</span>
+                            <span>{{ ucfirst($condition['field'] ?? 'file') }} {{ str_replace('_', ' ', $condition['operator'] ?? '') }} {{ ($condition['field'] ?? '') === 'size' ? \App\Support\ByteFormatter::format((int) ($condition['value'] ?? 0)) : ($condition['value'] ?? '') }}</span>
                         @endif
                         @if (!$loop->last)<b>{{ strtoupper($rule->logic) }}</b>@endif
                     @endforeach
@@ -56,17 +56,22 @@
             <div class="condition-builder" id="conditions" data-condition-container>
                 <div class="condition-row" data-condition-node>
                     <select name="conditions[0][field]" wire:model.live="conditions.0.field" data-condition-field aria-label="Condition field">
-                        <option value="name">File name</option><option value="extension">Extension</option><option value="size">File size (bytes)</option><option value="age">Age (days)</option>
+                        <option value="name">File name</option><option value="extension">Extension</option><option value="size">File size</option><option value="age">Age (days)</option>
                     </select>
                     <select name="conditions[0][operator]" wire:model.live="conditions.0.operator" data-condition-operator aria-label="Condition operator">
-                        <option value="contains">contains</option><option value="equals">equals</option><option value="starts_with">starts with</option><option value="ends_with">ends with</option><option value="greater_than">is greater than</option><option value="less_than">is less than</option>
+                        @if (in_array($conditions[0]['field'] ?? 'name', ['size', 'age'], true))
+                            <option value="equals">equals</option><option value="greater_than">is greater than</option><option value="less_than">is less than</option>
+                        @else
+                            <option value="contains">contains</option><option value="equals">equals</option><option value="starts_with">starts with</option><option value="ends_with">ends with</option>
+                        @endif
                     </select>
-                    <input name="conditions[0][value]" wire:model.live.debounce.500ms="conditions.0.value" data-condition-value placeholder="invoice" required>
+                    <input name="conditions[0][value]" wire:model.live.debounce.500ms="conditions.0.value" data-condition-value placeholder="{{ ($conditions[0]['field'] ?? 'name') === 'size' ? '100MB' : (($conditions[0]['field'] ?? 'name') === 'age' ? '30 Days' : 'invoice') }}" type="{{ ($conditions[0]['field'] ?? 'name') === 'age' ? 'number' : 'text' }}" inputmode="{{ ($conditions[0]['field'] ?? 'name') === 'size' ? 'decimal' : 'text' }}" required>
                     <button class="icon-button condition-remove" data-remove-condition type="button" aria-label="Remove condition" disabled>×</button>
                 </div>
             </div>
+            <small class="field-help" data-size-help hidden>File sizes accept B, KB, MB, GB, and TB (for example, 100MB).</small>
             @error('conditions')<small class="inventory-form-error">{{ $message }}</small>@enderror
-            <template id="condition-row-template"><div class="condition-row" data-condition-node><select data-condition-field aria-label="Condition field"><option value="name">File name</option><option value="extension">Extension</option><option value="size">File size (bytes)</option><option value="age">Age (days)</option></select><select data-condition-operator aria-label="Condition operator"><option value="contains">contains</option><option value="equals">equals</option><option value="starts_with">starts with</option><option value="ends_with">ends with</option><option value="greater_than">is greater than</option><option value="less_than">is less than</option></select><input data-condition-value placeholder="invoice" required><button class="icon-button condition-remove" data-remove-condition type="button" aria-label="Remove condition">×</button></div></template>
+            <template id="condition-row-template"><div class="condition-row" data-condition-node><select data-condition-field aria-label="Condition field"><option value="name">File name</option><option value="extension">Extension</option><option value="size">File size</option><option value="age">Age (days)</option></select><select data-condition-operator aria-label="Condition operator"><option value="contains">contains</option><option value="equals">equals</option><option value="starts_with">starts with</option><option value="ends_with">ends with</option><option value="greater_than">is greater than</option><option value="less_than">is less than</option></select><input data-condition-value placeholder="invoice" required><button class="icon-button condition-remove" data-remove-condition type="button" aria-label="Remove condition">×</button></div></template>
             <template id="condition-group-template"><div class="condition-group" data-condition-node><input type="hidden" data-group-type value="group"><div class="group-toolbar"><span>Nested group</span><select data-group-operator aria-label="Group operator"><option value="and">AND</option><option value="or">OR</option><option value="not">NOT</option></select><button class="icon-button" data-remove-condition type="button" aria-label="Remove group">×</button></div><div class="condition-children" data-condition-container></div><div class="group-actions"><button class="text-button" data-add-condition type="button">＋ Condition</button><button class="text-button" data-add-group type="button">＋ Nested group</button></div></div></template>
             <label class="field-label" for="rule_logic">COMBINE CONDITIONS</label>
             <select id="rule_logic" wire:model.live="logic" @error('logic') aria-invalid="true" @enderror><option value="and">Match all (AND)</option><option value="or">Match any (OR)</option><option value="not">Match none (NOT)</option></select>

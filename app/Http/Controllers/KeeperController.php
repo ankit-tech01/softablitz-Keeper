@@ -14,6 +14,7 @@ use App\Services\FolderPathService;
 use App\Services\FolderScanner;
 use App\Services\KeeperTrashService;
 use App\Services\RuleEvaluator;
+use App\Support\ByteSizeParser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -172,6 +173,9 @@ class KeeperController extends Controller
             $field = $condition['field'] ?? null;
             $operator = $condition['operator'] ?? null;
             $value = $condition['value'] ?? null;
+            $sizeInBytes = $field === 'size' && is_string($value)
+                ? ByteSizeParser::parse($value)
+                : null;
             $stringOperators = ['contains', 'equals', 'starts_with', 'ends_with'];
             $numberOperators = ['equals', 'greater_than', 'less_than'];
             $allowedOperators = in_array($field, ['size', 'age'], true) ? $numberOperators : $stringOperators;
@@ -181,7 +185,8 @@ class KeeperController extends Controller
                 || ! is_string($value)
                 || trim($value) === ''
                 || strlen($value) > 255
-                || (in_array($field, ['size', 'age'], true) && (! is_numeric($value) || (float) $value < 0))) {
+                || ($field === 'size' && $sizeInBytes === null)
+                || ($field === 'age' && (! is_numeric($value) || (float) $value < 0))) {
                 throw ValidationException::withMessages([
                     'conditions' => 'Use a valid field, operator and value in every condition.',
                 ]);
@@ -190,7 +195,7 @@ class KeeperController extends Controller
             $validatedConditions[] = [
                 'field' => $field,
                 'operator' => $operator,
-                'value' => trim($value),
+                'value' => $field === 'size' ? (string) $sizeInBytes : trim($value),
             ];
         }
 

@@ -2,8 +2,8 @@ function getConditionPlaceholder(fieldValue) {
     const placeholders = {
         name: 'invoice',
         extension: 'pdf',
-        size: '1048576',
-        age: '30',
+        size: '100MB',
+        age: '30 Days',
     };
 
     return placeholders[fieldValue] ?? 'invoice';
@@ -14,10 +14,16 @@ function conditionNodes(container) {
 }
 
 function bindLiveModel(element, property, debounce = false) {
+    const modelAttribute = debounce ? 'wire:model.live.debounce.500ms' : 'wire:model.live';
+
+    if (element.getAttribute(modelAttribute) === property) {
+        return;
+    }
+
     Array.from(element.attributes)
         .filter((attribute) => attribute.name.startsWith('wire:model'))
         .forEach((attribute) => element.removeAttribute(attribute.name));
-    element.setAttribute(debounce ? 'wire:model.live.debounce.500ms' : 'wire:model.live', property);
+    element.setAttribute(modelAttribute, property);
 }
 
 function updateConditionIndexes(container = document.querySelector('#conditions'), prefix = 'conditions') {
@@ -60,13 +66,45 @@ function updateConditionIndexes(container = document.querySelector('#conditions'
         value.name = `${base}[value]`;
         bindLiveModel(value, `${modelBase}.value`, true);
 
-        const placeholderValue = getConditionPlaceholder(field.value || 'name');
-        value.placeholder = placeholderValue;
-        if (!value.value && !value.dataset.placeholderSet) {
-            value.dataset.placeholderSet = 'true';
-            value.setAttribute('placeholder', placeholderValue);
-        }
+        updateConditionRow(node);
     });
+}
+
+function updateConditionRow(row, resetOperator = false) {
+    const field = row.querySelector('[data-condition-field]');
+    const operator = row.querySelector('[data-condition-operator]');
+    const value = row.querySelector('[data-condition-value]');
+    const numericField = ['size', 'age'].includes(field.value);
+    const operators = numericField
+        ? [['equals', 'equals'], ['greater_than', 'is greater than'], ['less_than', 'is less than']]
+        : [['contains', 'contains'], ['equals', 'equals'], ['starts_with', 'starts with'], ['ends_with', 'ends with']];
+    const currentOperator = resetOperator ? '' : operator.value;
+    const optionsMatch = operator.options.length === operators.length
+        && operators.every(([optionValue], index) => operator.options[index]?.value === optionValue);
+
+    if (!optionsMatch) {
+        operator.replaceChildren(...operators.map(([optionValue, label]) => {
+            const option = document.createElement('option');
+            option.value = optionValue;
+            option.textContent = label;
+
+            return option;
+        }));
+    }
+
+    operator.value = operators.some(([optionValue]) => optionValue === currentOperator)
+        ? currentOperator
+        : operators[0][0];
+    value.placeholder = getConditionPlaceholder(field.value);
+    value.type = field.value === 'age' ? 'number' : 'text';
+
+    if (field.value === 'size') {
+        value.inputMode = 'decimal';
+    } else {
+        value.removeAttribute('inputmode');
+    }
+
+    return operator.value !== currentOperator;
 }
 
 function appendCondition(container) {
@@ -136,32 +174,35 @@ document.addEventListener('change', (event) => {
     }
 
     const row = fieldSelect.closest('.condition-row');
-    const operatorSelect = row.querySelector('[data-condition-operator]');
-    const valueInput = row.querySelector('[data-condition-value]');
-    const operators = ['size', 'age'].includes(fieldSelect.value)
-        ? [['equals', 'equals'], ['greater_than', 'is greater than'], ['less_than', 'is less than']]
-        : [['contains', 'contains'], ['equals', 'equals'], ['starts_with', 'starts with'], ['ends_with', 'ends with']];
+    const operator = row.querySelector('[data-condition-operator]');
+    const operatorChanged = updateConditionRow(row, true);
+    operator.name = fieldSelect.name.replace('[field]', '[operator]');
+    bindLiveModel(operator, fieldSelect.getAttribute('wire:model.live').replace('.field', '.operator'));
+    syncSizeHelp();
 
-    operatorSelect.replaceChildren(...operators.map(([value, label]) => {
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = label;
-
-        return option;
-    }));
-    operatorSelect.value = operators[0][0];
-    operatorSelect.name = fieldSelect.name.replace('[field]', '[operator]');
-    bindLiveModel(operatorSelect, fieldSelect.getAttribute('wire:model.live').replace('.field', '.operator'));
-    valueInput.placeholder = getConditionPlaceholder(fieldSelect.value);
-    valueInput.type = ['size', 'age'].includes(fieldSelect.value) ? 'number' : 'text';
-    valueInput.value = valueInput.value || '';
-    operatorSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    if (operatorChanged) {
+        operator.dispatchEvent(new Event('change', { bubbles: true }));
+    }
 });
+
+function syncSizeHelp() {
+    const sizeHelp = document.querySelector('[data-size-help]');
+
+    if (sizeHelp) {
+        sizeHelp.hidden = !Array.from(document.querySelectorAll('#rule-builder-form [data-condition-field]'))
+            .some((field) => field.value === 'size');
+    }
+}
 
 updateConditionIndexes();
-document.querySelectorAll('[data-condition-field]').forEach((fieldSelect) => {
-    fieldSelect.dispatchEvent(new Event('change', { bubbles: true }));
-});
+const syncConditionRows = () => {
+    document.querySelectorAll('#rule-builder-form .condition-row').forEach((row) => updateConditionRow(row));
+    updateConditionIndexes();
+    syncSizeHelp();
+};
+const conditionObserver = new MutationObserver(syncConditionRows);
+conditionObserver.observe(document.body, { childList: true, subtree: true });
+syncConditionRows();
 
 function updateAutoPreviewCountdowns() {
     document.querySelectorAll('[data-auto-preview-countdown]').forEach((element) => {

@@ -158,6 +158,27 @@ test('the Livewire rule form validates and creates a rule', function () {
         ->action->toBe('trash');
 });
 
+test('file size rule conditions accept readable units and reject text operators', function () {
+    Livewire::test(RuleManager::class)
+        ->call('toggleBuilder')
+        ->set('name', 'Large files')
+        ->set('conditions', [['field' => 'size', 'operator' => 'greater_than', 'value' => '100MB']])
+        ->assertSee('100MB')
+        ->set('action', 'trash')
+        ->call('saveRule')
+        ->assertHasNoErrors();
+
+    expect(AutomationRule::query()->firstOrFail()->conditions)
+        ->toBe([['field' => 'size', 'operator' => 'greater_than', 'value' => '104857600']]);
+
+    Livewire::test(RuleManager::class)
+        ->set('name', 'Invalid size rule')
+        ->set('conditions', [['field' => 'size', 'operator' => 'contains', 'value' => '100MB']])
+        ->set('action', 'trash')
+        ->call('saveRule')
+        ->assertHasErrors(['conditions']);
+});
+
 test('toggling a rule disables its approval until it is previewed again', function () {
     $rule = AutomationRule::query()->create([
         'name' => 'Archive invoices',

@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\AutomationRule;
 use App\Models\FileExecution;
 use App\Services\FolderPathService;
+use App\Support\ByteSizeParser;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -317,6 +318,9 @@ class RuleManager extends Component
             $field = $condition['field'] ?? null;
             $operator = $condition['operator'] ?? null;
             $value = $condition['value'] ?? null;
+            $sizeInBytes = $field === 'size' && is_string($value)
+                ? ByteSizeParser::parse($value)
+                : null;
             $allowedOperators = in_array($field, ['size', 'age'], true)
                 ? ['equals', 'greater_than', 'less_than']
                 : ['contains', 'equals', 'starts_with', 'ends_with'];
@@ -326,13 +330,18 @@ class RuleManager extends Component
                 || ! is_string($value)
                 || trim($value) === ''
                 || strlen($value) > 255
-                || (in_array($field, ['size', 'age'], true) && (! is_numeric($value) || (float) $value < 0))) {
+                || ($field === 'size' && $sizeInBytes === null)
+                || ($field === 'age' && (! is_numeric($value) || (float) $value < 0))) {
                 throw ValidationException::withMessages([
                     'conditions' => 'Use a valid field, operator and value in every condition.',
                 ]);
             }
 
-            $validatedConditions[] = ['field' => $field, 'operator' => $operator, 'value' => trim($value)];
+            $validatedConditions[] = [
+                'field' => $field,
+                'operator' => $operator,
+                'value' => $field === 'size' ? (string) $sizeInBytes : trim($value),
+            ];
         }
 
         return $validatedConditions;
