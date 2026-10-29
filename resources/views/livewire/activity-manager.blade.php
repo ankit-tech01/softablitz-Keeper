@@ -91,7 +91,7 @@
                         <td>
                             <button class="inventory-file-link" type="button" wire:click="openTrashFile(@js($file['path']))" wire:loading.attr="disabled" wire:target="openTrashFile" aria-label="Open {{ $file['name'] }} with its default app" title="Open with default app">{{ $file['name'] }}</button>
                         </td>
-                        <td>{{ number_format($file['size']) }} B</td>
+                        <td>{{ \App\Support\ByteFormatter::format($file['size']) }}</td>
                         <td class="mono trash-file-path">{{ $file['path'] }}</td>
                         <td class="trash-file-actions">
                             @if ($file['ledger_entry_id'])

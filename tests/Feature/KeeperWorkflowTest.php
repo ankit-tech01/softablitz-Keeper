@@ -21,6 +21,7 @@ use App\Services\FileDispatcher;
 use App\Services\FolderScanner;
 use App\Services\KeeperTrashService;
 use App\Services\RuleEvaluator;
+use App\Support\ByteFormatter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -671,7 +672,7 @@ test('a directory inventory scan records recursive file details and file type to
             ->assertSee($folderPath)
             ->assertSee('report.pdf')
             ->assertSee('notes.txt')
-            ->assertSee(number_format($scan->fresh()->total_bytes).' B');
+            ->assertSee(ByteFormatter::format($scan->fresh()->total_bytes));
     } finally {
         File::deleteDirectory($folderPath);
     }
